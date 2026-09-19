@@ -1,6 +1,6 @@
 import React from 'react';
 import { ReviewStatus } from '../../types/candidate';
-import { Badge } from '../common/Badge';
+import { Badge } from '../../components/common/Badge';
 import { ShieldAlert, CircleAlert, CheckCircle2, Clock } from 'lucide-react';
 
 interface CandidateStatusBadgeProps {

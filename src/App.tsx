@@ -1,13 +1,15 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { AppLayout } from './components/layout/AppLayout';
 import { DashboardPage } from './pages/DashboardPage';
 import { CandidatesPage } from './pages/CandidatesPage';
 import { CandidateDetailsPage } from './pages/CandidateDetailsPage';
-import { AlertsPage } from './pages/AlertsPage';
 import { ReviewQueuePage } from './pages/ReviewQueuePage';
+import { AlertsPage } from './pages/AlertsPage';
 import { HistoricalPapersPage } from './pages/HistoricalPapersPage';
-import { CurrentExamMetadataPage } from './pages/CurrentExamMetadataPage';
+import { RealPapersPage } from './pages/RealPapersPage';
+import { ExamMetadataPage } from './pages/ExamMetadataPage';
+import { DataSourcesOverviewPage } from './pages/DataSourcesOverviewPage';
 import { SettingsPage } from './pages/SettingsPage';
 
 export function App() {
@@ -18,12 +20,13 @@ export function App() {
           <Route path="/" element={<DashboardPage />} />
           <Route path="/candidates" element={<CandidatesPage />} />
           <Route path="/candidates/:id" element={<CandidateDetailsPage />} />
+          <Route path="/review" element={<ReviewQueuePage />} />
           <Route path="/alerts" element={<AlertsPage />} />
-          <Route path="/review-queue" element={<ReviewQueuePage />} />
-          <Route path="/knowledge-base/historical-papers" element={<HistoricalPapersPage />} />
-          <Route path="/knowledge-base/exam-metadata" element={<CurrentExamMetadataPage />} />
+          <Route path="/historical" element={<HistoricalPapersPage />} />
+          <Route path="/real-papers" element={<RealPapersPage />} />
+          <Route path="/metadata" element={<ExamMetadataPage />} />
+          <Route path="/sources" element={<DataSourcesOverviewPage />} />
           <Route path="/settings" element={<SettingsPage />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </AppLayout>
     </BrowserRouter>

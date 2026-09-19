@@ -1,5 +1,5 @@
 import React from 'react';
-import { Badge } from '../common/Badge';
+import { Badge } from '../../components/common/Badge';
 import { CircleAlert, UserCheck, CheckCircle2 } from 'lucide-react';
 
 interface ReviewStatusBadgeProps {

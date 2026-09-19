@@ -1,6 +1,6 @@
 import React from 'react';
 import { AlertSeverity } from '../../types/alert';
-import { Badge } from '../common/Badge';
+import { Badge } from '../../components/common/Badge';
 import { ShieldAlert, CircleAlert, CheckCircle2 } from 'lucide-react';
 
 interface AlertSeverityBadgeProps {

@@ -1,5 +1,5 @@
 {
-  "name": "Leaked Before the Bell",
+  "name": "LeakLens",
   "description": "AI-assisted examination paper early-warning, document intelligence, and investigation system for education security and examination authorities.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]

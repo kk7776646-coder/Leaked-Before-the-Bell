@@ -3,67 +3,47 @@ export * from './alert';
 export * from './exam';
 export * from './review';
 
-export type ReliabilityGrade = 'Tier 1 (Verified Doc)' | 'Tier 2 (High Probability)' | 'Tier 3 (Rumor/Whisper)';
-export type ImpactLevel = 'High' | 'Medium' | 'Low';
-export type Sentiment = 'Bullish' | 'Bearish' | 'Neutral';
-
-
-export interface LeakedWhisper {
-  id: string;
-  ticker: string;
-  companyName: string;
-  title: string;
-  summary: string;
-  category: 'Earnings Leak' | 'M&A / Buyout' | 'Regulatory / FDA' | 'Insider Cluster' | 'Supply Chain' | 'Executive Departure';
-  timestamp: string;
-  preMarketPrice: number;
-  preMarketChangePercent: number;
-  consensusEPS?: number;
-  leakedEPSWhisper?: number;
-  consensusRevenue?: string;
-  leakedRevenueWhisper?: string;
-  impliedVolPercent?: number;
-  confidenceScore: number; // 0 - 100
-  reliabilityGrade: ReliabilityGrade;
-  sourceType: string;
-  sentiment: Sentiment;
-  impactLevel: ImpactLevel;
-  verificationsCount: number;
-  upvotesCount: number;
-  isBookmarked?: boolean;
-  priceHistory: { time: string; price: number; volume: number }[];
-  detailsText: string;
-  aiTakeaway?: string;
-}
+export type ReliabilityGrade = 'A+' | 'A' | 'B' | 'C' | 'Unverified';
+export type ImpactLevel = 'Critical' | 'High' | 'Medium' | 'Low';
+export type Sentiment = 'Bullish' | 'Bearish' | 'Neutral' | 'Volatile';
 
 export interface InsiderTrade {
   id: string;
-  ticker: string;
-  companyName: string;
-  insiderName: string;
+  name: string;
+  role: string;
+  company: string;
+  transactionType: string;
+  shares: string;
+  value: string;
+  date: string;
+  reliability: ReliabilityGrade;
+}
+
+export interface LeakedWhisper {
+  id: string;
   title: string;
-  tradeType: 'Buy' | 'Sell' | 'Option Exercise';
-  shares: number;
-  pricePerShare: number;
-  totalValue: number;
-  dateFiled: string;
-  preBellSentiment: Sentiment;
+  source: string;
+  timestamp: string;
+  reliability: ReliabilityGrade;
+  impact: ImpactLevel;
+  sentiment: Sentiment;
+  content: string;
+  tags: string[];
 }
 
 export interface MarketIndex {
   symbol: string;
   name: string;
-  value: number;
-  change: number;
-  changePercent: number;
+  value: string;
+  change: string;
+  isPositive: boolean;
 }
 
 export interface WatchlistItem {
+  id: string;
   ticker: string;
   name: string;
-  price: number;
-  changePercent: number;
-  volume: string;
-  leakCount: number;
-  alertOn: boolean;
+  price: string;
+  change: string;
+  isPositive: boolean;
 }
