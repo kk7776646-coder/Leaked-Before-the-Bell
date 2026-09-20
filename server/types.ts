@@ -24,8 +24,94 @@ export interface DocumentExtractionSummary {
   extractedAt: string;
 }
 
+export interface ExtractedMetadataField<T = string> {
+  value: T;
+  confidence: number; // 0.0 to 1.0
+  confidenceLevel: 'HIGH' | 'MEDIUM' | 'LOW';
+  source: 'DOCUMENT_HEADER' | 'OCR_TEXT' | 'FILENAME' | 'FOLDER_PATH' | 'EXAM_METADATA_MATCH' | 'HISTORICAL_MATCH' | 'USER_CORRECTED' | 'NOT_DETECTED';
+  notes?: string;
+}
+
+export interface AutoExtractedMetadata {
+  subject: ExtractedMetadataField<string>;
+  subjectCode: ExtractedMetadataField<string>;
+  examDate: ExtractedMetadataField<string>;
+  semester: ExtractedMetadataField<string>;
+  year: ExtractedMetadataField<number | string>;
+  examType: ExtractedMetadataField<string>;
+  paperType: ExtractedMetadataField<string>;
+  courseOrProgram: ExtractedMetadataField<string>;
+  maxMarks: ExtractedMetadataField<number>;
+  duration: ExtractedMetadataField<string>;
+  sectionCount: ExtractedMetadataField<number>;
+  questionCount: ExtractedMetadataField<number>;
+  academicSession: ExtractedMetadataField<string>;
+  paperNumber: ExtractedMetadataField<string>;
+  setVariant: ExtractedMetadataField<string>;
+  chiefExaminer?: ExtractedMetadataField<string>;
+  matchedExamId?: string;
+}
+
+export interface LogicalPaperUnit {
+  paperId: string; // e.g. PAPER-01
+  title: string;
+  subject: string;
+  subjectCode: string;
+  pageRange: { startPage: number; endPage: number };
+  pageCount: number;
+  pages: PageExtractionResult[];
+  questions: ExtractedQuestion[];
+  extractedText: string;
+  metadata: AutoExtractedMetadata;
+  groupingConfidence: 'HIGH' | 'MEDIUM' | 'UNCERTAIN';
+  groupingReason: string;
+  sourceFiles: {
+    filename: string;
+    originalPath: string;
+    sha256: string;
+    storagePath: string;
+    fileSize: number;
+    mimeType: string;
+  }[];
+  overallExtractionMethod: 'NATIVE_TEXT' | 'OCR' | 'MIXED' | 'DIRECT_IMAGE';
+  overallOcrConfidence: number;
+  uncertaintyReason?: string;
+}
+
+export interface IngestionProcessingStatusStep {
+  step: 'UPLOADED' | 'INSPECTING' | 'EXTRACTING' | 'DETECTING_DOCUMENTS' | 'EXTRACTING_TEXT' | 'OCR_PROCESSING' | 'GROUPING_PAPERS' | 'EXTRACTING_METADATA' | 'EXTRACTING_QUESTIONS' | 'COMPARING' | 'COMPLETED' | 'REVIEW_REQUIRED' | 'FAILED';
+  label: string;
+  timestamp: string;
+  details?: string;
+}
+
+export interface IngestionHierarchyResult {
+  uploadId: string; // UP-XXXX
+  archiveId?: string; // ARC-XXXX
+  originalFilename: string;
+  fileType: 'PDF' | 'IMAGE' | 'ZIP' | 'BUNDLE';
+  size: number;
+  sha256: string;
+  status: 'UPLOADED' | 'INSPECTING' | 'EXTRACTING' | 'DETECTING_DOCUMENTS' | 'EXTRACTING_TEXT' | 'OCR_PROCESSING' | 'GROUPING_PAPERS' | 'EXTRACTING_METADATA' | 'EXTRACTING_QUESTIONS' | 'COMPARING' | 'COMPLETED' | 'REVIEW_REQUIRED' | 'FAILED';
+  steps: IngestionProcessingStatusStep[];
+  papers: LogicalPaperUnit[];
+  extractedFilesCount: number;
+  detectedDocumentsCount: number;
+  totalPagesCount: number;
+  isArchive: boolean;
+  archivePath?: string;
+  errors?: string[];
+  warnings?: string[];
+}
+
 export interface DetectedContentRecord {
   id: string; // DC-XXXX or DL-XXXX
+  uploadId?: string; // UP-XXXX
+  archiveId?: string; // ARC-XXXX
+  sourceDocumentId?: string; // DOC-XXXX
+  paperId?: string; // PAPER-01
+  pageRange?: { startPage: number; endPage: number };
+  archivePath?: string;
   name: string; // original filename or title
   filename: string; // stored filename
   contentType: 'Question Image' | 'Multi-page Image' | 'PDF' | 'Screenshot' | 'Document' | 'Social Post' | 'Other';
@@ -48,6 +134,8 @@ export interface DetectedContentRecord {
   status: 'ACTIVE' | 'ARCHIVED';
   storagePath: string;
   extractedText: string;
+  extractedMetadata?: AutoExtractedMetadata;
+  metadataSource?: 'AUTO_DETECTED' | 'USER_CORRECTED';
   extractionSummary?: DocumentExtractionSummary;
   extractionMethod?: 'NATIVE_TEXT' | 'OCR' | 'MIXED' | 'DIRECT_IMAGE';
   ocrConfidence?: number;
@@ -88,6 +176,8 @@ export interface DetectedContentRecord {
     verificationStatus?: string;
   };
   groupFiles?: { filename: string; size: number; sha256: string; storagePath: string }[];
+  isTestData?: boolean;
+  sourceType?: 'USER_UPLOAD' | 'TEST_FIXTURE' | 'SYSTEM';
 }
 
 // Alias for backward compatibility
@@ -155,6 +245,8 @@ export interface HistoricalPaperRecord {
   extractedText: string;
   createdAt: string;
   questions: ExtractedQuestion[];
+  isTestData?: boolean;
+  sourceType?: 'USER_UPLOAD' | 'TEST_FIXTURE' | 'SYSTEM';
 }
 
 export interface RealPaperRecord {
@@ -202,6 +294,8 @@ export interface RealPaperRecord {
   };
   createdAt: string;
   updatedAt: string;
+  isTestData?: boolean;
+  sourceType?: 'USER_UPLOAD' | 'TEST_FIXTURE' | 'SYSTEM';
 }
 
 export interface ExamMetadataRecord {
@@ -220,6 +314,8 @@ export interface ExamMetadataRecord {
   usageCount: number;
   createdAt: string;
   updatedAt: string;
+  isTestData?: boolean;
+  sourceType?: 'USER_UPLOAD' | 'TEST_FIXTURE' | 'SYSTEM';
 }
 
 export interface AlertRecord {
@@ -239,6 +335,8 @@ export interface AlertRecord {
   matchedReferenceId?: string;
   matchedReferenceTitle?: string;
   evidenceSummary: string;
+  isTestData?: boolean;
+  sourceType?: 'USER_UPLOAD' | 'TEST_FIXTURE' | 'SYSTEM';
 }
 
 export interface ReviewItemRecord {
@@ -255,6 +353,8 @@ export interface ReviewItemRecord {
   assignedReviewer?: string;
   reviewedAt?: string;
   decisionNotes?: string;
+  isTestData?: boolean;
+  sourceType?: 'USER_UPLOAD' | 'TEST_FIXTURE' | 'SYSTEM';
 }
 
 export interface SocialSourceRecord {
@@ -280,10 +380,271 @@ export interface SystemSettings {
 export interface AuditLogEntry {
   id: string;
   action: string;
-  entityType: 'DETECTED_CONTENT' | 'CANDIDATE' | 'HISTORICAL_PAPER' | 'REAL_PAPER' | 'EXAM_METADATA' | 'ALERT' | 'REVIEW';
+  entityType: 'DETECTED_CONTENT' | 'CANDIDATE' | 'HISTORICAL_PAPER' | 'REAL_PAPER' | 'EXAM_METADATA' | 'ALERT' | 'REVIEW' | 'AI_ASSISTANT';
   entityId: string;
   timestamp: string;
   user: string;
   result: 'SUCCESS' | 'FAILED';
   details: string;
 }
+
+// ==========================================
+// AI ASSISTANT TYPES
+// ==========================================
+
+export type AiProviderId = 'openai' | 'gemini' | 'anthropic' | 'openrouter' | 'custom' | string;
+export type AiApiStyle = 'OPENAI_COMPATIBLE' | 'GEMINI' | 'ANTHROPIC';
+export type AiConnectionStatus = 'NOT_CONFIGURED' | 'NOT_TESTED' | 'TESTING' | 'CONNECTED' | 'ERROR' | 'DISABLED';
+
+export interface AiModelPreset {
+  id: string;
+  name: string;
+  displayName: string;
+  contextWindow?: number;
+  description?: string;
+}
+
+export interface AiProviderPreset {
+  id: AiProviderId;
+  name?: string;
+  displayName: string;
+  defaultBaseUrl: string;
+  documentationUrl: string;
+  apiStyle: AiApiStyle;
+  requiresApiKey: boolean;
+  supportsModelId: boolean;
+  supportsCustomBaseUrl: boolean;
+  supportsModelDiscovery: boolean;
+  defaultModels: AiModelPreset[];
+  description: string;
+}
+
+export interface AiProviderConfig {
+  id: string;
+  providerId: AiProviderId;
+  modelDisplayName: string;
+  modelName: string;
+  modelId: string;
+  baseUrl: string;
+  useCustomBaseUrl: boolean;
+  apiKey?: string; // Stored securely on server
+  hasApiKey?: boolean; // Returned to client
+  maskedApiKey?: string; // e.g. "sk-••••••••••••3a8f"
+  status: AiConnectionStatus;
+  lastTestedAt?: string;
+  lastResponseTimeMs?: number;
+  lastError?: string;
+  enabled: boolean;
+  isDefault: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AiAssistantContext {
+  currentRoute?: string;
+  selectedDetectedContentId?: string;
+  selectedDocumentId?: string;
+  selectedAlertId?: string;
+  selectedReviewId?: string;
+  selectedRealPaperId?: string;
+  selectedHistoricalPaperId?: string;
+  selectedMetadataId?: string;
+  currentFilters?: Record<string, any>;
+  currentSearch?: string;
+  page?: number;
+  pageNumber?: number;
+}
+
+export interface AiSuggestedAction {
+  id: string;
+  label: string;
+  actionType: 'NAVIGATE' | 'OPEN_RECORD' | 'FILTER' | 'RETRY_PROCESSING' | 'CONFIRM_DESTRUCTIVE' | 'EXECUTE_ACTION' | 'SHOW_EVIDENCE';
+  payload?: any;
+  isDestructive?: boolean;
+  confirmationPrompt?: string;
+}
+
+export interface AiChatMessage {
+  id: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  timestamp: string;
+  evidenceBullets?: string[];
+  suggestedActions?: AiSuggestedAction[];
+  structuredContextSummary?: string;
+  pendingConfirmationAction?: {
+    actionType: string;
+    payload: any;
+    prompt: string;
+    confirmLabel: string;
+    cancelLabel: string;
+  };
+  status?: 'SENT' | 'RECEIVING' | 'ERROR';
+  error?: string;
+}
+
+export interface AiConnectionTestResult {
+  success: boolean;
+  provider?: string;
+  model?: string;
+  responseTimeMs?: number;
+  message?: string;
+  testedAt?: string;
+  status?: string;
+  error?: string;
+  details?: any;
+}
+
+// ==========================================
+// UPLOAD LIFECYCLE TYPES
+// ==========================================
+
+export type UploadStatus = 'UPLOADING' | 'UPLOADED' | 'UPLOAD_FAILED' | 'DUPLICATE';
+
+export type IngestionProcessingStatus =
+  | 'PENDING'
+  | 'INSPECTING'
+  | 'EXTRACTING'
+  | 'OCR_PROCESSING'
+  | 'ANALYZING'
+  | 'COMPLETED'
+  | 'REVIEW_REQUIRED'
+  | 'FAILED';
+
+export interface UploadRecord {
+  upload_id: string; // e.g. "UP-1001"
+  filename: string;
+  original_filename: string;
+  content_type: string;
+  size: number;
+  sha256: string;
+  storage_path: string;
+  uploaded_at: string;
+  status: UploadStatus;
+  error?: string;
+  is_duplicate?: boolean;
+  duplicate_of?: string;
+  processing_status?: IngestionProcessingStatus;
+  processing_error?: string;
+  associated_candidate_ids?: string[];
+  metadata?: {
+    platform?: string;
+    source?: string;
+    notes?: string;
+    detectedType?: string;
+    [key: string]: any;
+  };
+}
+
+export interface UploadResponseItem {
+  upload_id: string;
+  filename: string;
+  original_filename: string;
+  content_type: string;
+  size: number;
+  sha256: string;
+  uploaded_at: string;
+  status: UploadStatus;
+  error?: string;
+  is_duplicate?: boolean;
+  duplicate_of?: string;
+  processing_status?: IngestionProcessingStatus;
+}
+
+export interface BatchUploadResponse {
+  success: boolean;
+  uploads: UploadResponseItem[];
+  total: number;
+  successful: number;
+  failed: number;
+}
+
+// ==========================================
+// TEST DATA SYSTEM TYPES
+// ==========================================
+
+export interface TestDataStatusResponse {
+  enabled: boolean;
+  testCandidatesCount: number;
+  realCandidatesCount: number;
+  testHistoricalCount: number;
+  realHistoricalCount: number;
+  testRealPapersCount: number;
+  realRealPapersCount: number;
+  testAlertsCount: number;
+  realAlertsCount: number;
+  testReviewsCount: number;
+  realReviewsCount: number;
+  totalTestItems: number;
+}
+
+export interface ClearTestDataResponse {
+  success: boolean;
+  message: string;
+  clearedCandidates: number;
+  clearedHistorical: number;
+  clearedRealPapers: number;
+  clearedAlerts: number;
+  clearedReviews: number;
+  deletedFilesCount: number;
+}
+
+export interface TestDatasetSummary {
+  success: boolean;
+  message: string;
+  historicalPapers: HistoricalPaperRecord[];
+  verifiedPapers: RealPaperRecord[];
+  suspiciousCandidates: DetectedContentRecord[];
+  normalCandidates: DetectedContentRecord[];
+  alertsGenerated: AlertRecord[];
+  reviewsGenerated: ReviewItemRecord[];
+}
+
+// ==========================================
+// AUTHENTICATION & USER MANAGEMENT TYPES
+// ==========================================
+
+export type UserRole = 'OPERATOR' | 'SECURITY_OFFICER' | 'ADMIN';
+export type UserStatus = 'ACTIVE' | 'SUSPENDED';
+
+export interface UserRecord {
+  id: string; // e.g. "USR-001"
+  email: string;
+  fullName: string;
+  passwordHash: string; // scrypt$16384$8$1$salt$hash
+  role: UserRole;
+  organization?: string;
+  status: UserStatus;
+  createdAt: string;
+  lastLoginAt?: string;
+}
+
+export interface SafeUser {
+  id: string;
+  email: string;
+  fullName: string;
+  role: UserRole;
+  organization?: string;
+  status: UserStatus;
+  createdAt: string;
+  lastLoginAt?: string;
+}
+
+export interface SessionRecord {
+  token: string;
+  userId: string;
+  expiresAt: string;
+  createdAt: string;
+  userAgent?: string;
+  ip?: string;
+}
+
+export interface AuthResponse {
+  success: boolean;
+  message?: string;
+  user?: SafeUser;
+  token?: string;
+}
+
+
+

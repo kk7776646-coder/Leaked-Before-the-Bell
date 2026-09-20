@@ -20,9 +20,14 @@ import {
   Loader2,
   ArrowUpRight,
   RotateCw,
+  Upload,
+  CheckCircle2,
+  XCircle,
+  FlaskConical,
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api, DetectedContentRecord } from '../services/api';
+import { DocumentUploadModal } from '../components/upload/DocumentUploadModal';
 
 const DEFAULT_FILTER_VALUES: PageFilterValues = {
   risk: 'ALL',
@@ -48,6 +53,10 @@ export const DetectedContentPage: React.FC = () => {
   const [archiveTarget, setArchiveTarget] = useState<DetectedContentRecord | null>(null);
   const [restoreTarget, setRestoreTarget] = useState<DetectedContentRecord | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [isTestSuiteModalOpen, setIsTestSuiteModalOpen] = useState(false);
+  const [testSuiteLoading, setTestSuiteLoading] = useState(false);
+  const [testSuiteReport, setTestSuiteReport] = useState<any>(null);
 
   // Toast
   const [toast, setToast] = useState<ToastNotification | null>(null);
@@ -55,6 +64,21 @@ export const DetectedContentPage: React.FC = () => {
   const showToast = (text: string, type: 'success' | 'info' | 'error' = 'success') => {
     setToast({ text, type });
     setTimeout(() => setToast(null), 4000);
+  };
+
+  const handleRunTestSuite = async () => {
+    setIsTestSuiteModalOpen(true);
+    setTestSuiteLoading(true);
+    try {
+      const report = await api.runIngestionTestSuite();
+      setTestSuiteReport(report);
+      showToast(`Ingestion test suite completed: ${report.passedCount}/${report.totalTests} passed.`, 'success');
+    } catch (err: any) {
+      console.error('Failed to run test suite:', err);
+      showToast(err.message || 'Failed to run test suite', 'error');
+    } finally {
+      setTestSuiteLoading(false);
+    }
   };
 
   const fetchDetectedContent = async () => {
@@ -331,14 +355,30 @@ export const DetectedContentPage: React.FC = () => {
             <Button
               variant="outline"
               size="sm"
+              icon={<FlaskConical className="w-4 h-4 text-purple-500" />}
+              onClick={handleRunTestSuite}
+            >
+              Run Pipeline Test Suite
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
               icon={<RotateCw className="w-4 h-4" />}
               onClick={fetchDetectedContent}
             >
               Refresh
             </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              icon={<Upload className="w-4 h-4" />}
+              onClick={() => setIsUploadModalOpen(true)}
+            >
+              Upload Files / ZIP
+            </Button>
             <Link to="/sources">
               <Button variant="outline" size="sm">
-                Social Media Feeds
+                Social Feeds
               </Button>
             </Link>
           </div>
@@ -406,13 +446,22 @@ export const DetectedContentPage: React.FC = () => {
                             ? 'Try changing or clearing your filters.'
                             : 'No detected content available yet.'}
                         </p>
-                        {hasActiveFilters && (
+                        {hasActiveFilters ? (
                           <Button
                             variant="outline"
                             size="sm"
                             onClick={handleClearFilters}
                           >
                             Clear filters
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="primary"
+                            size="sm"
+                            icon={<Upload className="w-4 h-4" />}
+                            onClick={() => setIsUploadModalOpen(true)}
+                          >
+                            Upload Files / ZIP
                           </Button>
                         )}
                       </div>
@@ -579,6 +628,132 @@ export const DetectedContentPage: React.FC = () => {
 
       {/* Floating Toast Notification */}
       <Toast toast={toast} onClose={() => setToast(null)} />
+
+      {/* Recursive Document Ingestion & Extraction Modal */}
+      <DocumentUploadModal
+        isOpen={isUploadModalOpen}
+        onClose={() => setIsUploadModalOpen(false)}
+        onUploadSuccess={(candidate) => {
+          showToast(`Successfully ingested and processed '${candidate.name}'.`, 'success');
+          fetchDetectedContent();
+        }}
+      />
+
+      {/* Ingestion Test Suite Modal */}
+      {isTestSuiteModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs font-sans">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-3xl w-full p-6 shadow-2xl relative max-h-[85vh] flex flex-col">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800 shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400">
+                  <FlaskConical className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
+                    Document Ingestion & Metadata Test Suite
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Automated verification across 27 extraction, parsing, security, and boundary-splitting scenarios.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsTestSuiteModalOpen(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto py-4 space-y-3 pr-1 text-xs">
+              {testSuiteLoading ? (
+                <div className="py-16 text-center space-y-3">
+                  <Loader2 className="w-8 h-8 text-purple-600 animate-spin mx-auto" />
+                  <p className="text-xs text-slate-500">Running 27 test scenarios on server fixtures...</p>
+                </div>
+              ) : testSuiteReport ? (
+                <>
+                  <div className="p-4 rounded-xl bg-purple-50/60 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800 flex items-center justify-between">
+                    <div>
+                      <div className="font-bold text-purple-950 dark:text-purple-100 text-sm">
+                        {testSuiteReport.summary}
+                      </div>
+                      <div className="text-[11px] text-purple-700 dark:text-purple-300 mt-0.5">
+                        Completed at {new Date(testSuiteReport.timestamp).toLocaleTimeString()}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 font-bold text-xs">
+                        {testSuiteReport.passedCount} Passed
+                      </span>
+                      {testSuiteReport.failedCount > 0 && (
+                        <span className="px-2.5 py-1 rounded-full bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300 font-bold text-xs">
+                          {testSuiteReport.failedCount} Failed
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    {testSuiteReport.results.map((t: any) => (
+                      <div
+                        key={t.id}
+                        className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/50 flex items-start justify-between gap-3"
+                      >
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            {t.status === 'PASSED' ? (
+                              <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                            ) : (
+                              <XCircle className="w-4 h-4 text-rose-500 shrink-0" />
+                            )}
+                            <span className="font-bold text-slate-900 dark:text-slate-100">
+                              {t.name}
+                            </span>
+                            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-400">
+                              {t.id}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-600 dark:text-slate-400 pl-6">
+                            {t.details}
+                          </p>
+                        </div>
+                        <span className="text-[10px] font-mono text-slate-400 shrink-0 mt-0.5">
+                          {t.durationMs}ms
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <div className="text-center text-slate-400 py-8">No test results available.</div>
+              )}
+            </div>
+
+            <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-2 shrink-0">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setIsTestSuiteModalOpen(false)}
+              >
+                Close
+              </Button>
+              <Button
+                type="button"
+                variant="primary"
+                size="sm"
+                onClick={handleRunTestSuite}
+                disabled={testSuiteLoading}
+                icon={testSuiteLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCw className="w-3.5 h-3.5" />}
+              >
+                Re-run Test Suite
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </ResponsiveContainer>
   );
 };

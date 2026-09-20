@@ -11,6 +11,28 @@ import {
   AuditLogEntry,
   QuestionForensicResult,
   ExtractedQuestion,
+  IngestionHierarchyResult,
+  LogicalPaperUnit,
+  AutoExtractedMetadata,
+  ExtractedMetadataField,
+  AiProviderConfig,
+  AiProviderPreset,
+  AiConnectionStatus,
+  AiConnectionTestResult,
+  AiChatMessage,
+  AiAssistantContext,
+  AiSuggestedAction,
+  UploadRecord,
+  UploadResponseItem,
+  BatchUploadResponse,
+  UploadStatus,
+  IngestionProcessingStatus,
+  TestDataStatusResponse,
+  ClearTestDataResponse,
+  TestDatasetSummary,
+  SafeUser,
+  UserRole,
+  AuthResponse,
 } from '../../server/types';
 
 export type {
@@ -26,11 +48,113 @@ export type {
   AuditLogEntry,
   QuestionForensicResult,
   ExtractedQuestion,
+  IngestionHierarchyResult,
+  LogicalPaperUnit,
+  AutoExtractedMetadata,
+  ExtractedMetadataField,
+  AiProviderConfig,
+  AiProviderPreset,
+  AiConnectionStatus,
+  AiConnectionTestResult,
+  AiChatMessage,
+  AiAssistantContext,
+  AiSuggestedAction,
+  UploadRecord,
+  UploadResponseItem,
+  BatchUploadResponse,
+  UploadStatus,
+  IngestionProcessingStatus,
+  TestDataStatusResponse,
+  ClearTestDataResponse,
+  TestDatasetSummary,
+  SafeUser,
+  UserRole,
+  AuthResponse,
 };
 
 const BASE_URL = '/api';
 
+export function getStoredAuthToken(): string | null {
+  if (typeof window !== 'undefined') {
+    return localStorage.getItem('leaklens_token');
+  }
+  return null;
+}
+
+export function setStoredAuthToken(token: string | null) {
+  if (typeof window !== 'undefined') {
+    if (token) {
+      localStorage.setItem('leaklens_token', token);
+    } else {
+      localStorage.removeItem('leaklens_token');
+    }
+  }
+}
+
+export function getAuthHeaders(extraHeaders: Record<string, string> = {}): Record<string, string> {
+  const token = getStoredAuthToken();
+  const headers: Record<string, string> = { ...extraHeaders };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  return headers;
+}
+
 export const api = {
+  // --- INGESTION & AUTO METADATA EXTRACTION ---
+  async inspectCandidateDocument(formData: FormData): Promise<{
+    success: boolean;
+    inspection: IngestionHierarchyResult;
+    uploadId: string;
+    archiveId?: string;
+    papersCount: number;
+    totalPagesCount: number;
+    papers: LogicalPaperUnit[];
+  }> {
+    const res = await fetch(`${BASE_URL}/candidates/inspect`, {
+      method: 'POST',
+      body: formData,
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Inspection failed' }));
+      throw new Error(err.error || err.message || 'Inspection failed');
+    }
+    return res.json();
+  },
+
+  async confirmIngestion(payload: {
+    hierarchyResult: IngestionHierarchyResult;
+    platform?: string;
+    source?: string;
+    userPaperOverrides?: Record<string, any>;
+  }): Promise<{
+    success: boolean;
+    message: string;
+    candidates: DetectedContentRecord[];
+    candidate: DetectedContentRecord;
+    count: number;
+  }> {
+    const res = await fetch(`${BASE_URL}/candidates/confirm-ingest`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Confirmation failed' }));
+      throw new Error(err.error || err.message || 'Failed to confirm document ingestion');
+    }
+    return res.json();
+  },
+
+  async runIngestionTestSuite(): Promise<any> {
+    const res = await fetch(`${BASE_URL}/ingest/test-suite`);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Test suite failed' }));
+      throw new Error(err.error || err.message || 'Failed to execute test suite');
+    }
+    return res.json();
+  },
+
   // --- DETECTED CONTENT ---
   async getDetectedContents(params?: { status?: string; risk?: string; type?: string; search?: string }): Promise<DetectedContentRecord[]> {
     const query = new URLSearchParams();
@@ -175,6 +299,28 @@ export const api = {
     if (!res.ok) throw new Error('Failed to delete historical paper');
   },
 
+  async deleteAllHistoricalPapers(): Promise<{ success: boolean; message: string; count: number }> {
+    const res = await fetch(`${BASE_URL}/historical/all`, {
+      method: 'DELETE',
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Failed to delete all historical papers' }));
+      throw new Error(err.error || 'Failed to delete all historical papers');
+    }
+    return res.json();
+  },
+
+  async generateTrialHistoricalPaper(): Promise<{ success: boolean; paper: HistoricalPaperRecord }> {
+    const res = await fetch(`${BASE_URL}/historical/generate-trial-paper`, {
+      method: 'POST',
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Failed to generate trial paper' }));
+      throw new Error(err.error || 'Failed to generate physical trial examination paper');
+    }
+    return res.json();
+  },
+
   getHistoricalDocumentUrl(id: string): string {
     return `${BASE_URL}/historical/${encodeURIComponent(id)}/document`;
   },
@@ -234,6 +380,17 @@ export const api = {
       method: 'DELETE',
     });
     if (!res.ok) throw new Error('Failed to delete real paper');
+  },
+
+  async deleteAllRealPapers(): Promise<{ success: boolean; message: string; count: number }> {
+    const res = await fetch(`${BASE_URL}/real-papers/all`, {
+      method: 'DELETE',
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Failed to delete all real papers' }));
+      throw new Error(err.error || 'Failed to delete all verified real papers');
+    }
+    return res.json();
   },
 
   getRealPaperDocumentUrl(id: string): string {
@@ -398,4 +555,441 @@ export const api = {
     if (!res.ok) throw new Error('Failed to fetch audit logs');
     return res.json();
   },
+
+  // --- AI ASSISTANT CONFIGURATION & CHAT ---
+  async getAiPresets(): Promise<AiProviderPreset[]> {
+    const res = await fetch(`${BASE_URL}/ai-assistant/presets`);
+    if (!res.ok) throw new Error('Failed to fetch AI provider presets');
+    return res.json();
+  },
+
+  async getAiProviders(): Promise<AiProviderConfig[]> {
+    const res = await fetch(`${BASE_URL}/ai-assistant/providers`);
+    if (!res.ok) throw new Error('Failed to fetch AI providers');
+    return res.json();
+  },
+
+  async saveAiProvider(payload: {
+    id?: string;
+    providerId: string;
+    modelDisplayName: string;
+    modelName: string;
+    modelId: string;
+    baseUrl: string;
+    useCustomBaseUrl: boolean;
+    apiKey?: string;
+    enabled?: boolean;
+    isDefault?: boolean;
+    status?: AiConnectionStatus;
+  }): Promise<{ success: boolean; provider: AiProviderConfig }> {
+    const res = await fetch(`${BASE_URL}/ai-assistant/providers`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Failed to save provider' }));
+      throw new Error(err.error || err.message || 'Failed to save provider');
+    }
+    return res.json();
+  },
+
+  async setDefaultAiProvider(id: string): Promise<{ success: boolean }> {
+    const res = await fetch(`${BASE_URL}/ai-assistant/providers/${encodeURIComponent(id)}/default`, {
+      method: 'POST',
+    });
+    if (!res.ok) throw new Error('Failed to set default provider');
+    return res.json();
+  },
+
+  async toggleAiProvider(id: string, enabled: boolean): Promise<{ success: boolean; provider: AiProviderConfig }> {
+    const res = await fetch(`${BASE_URL}/ai-assistant/providers/${encodeURIComponent(id)}/toggle`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled }),
+    });
+    if (!res.ok) throw new Error('Failed to toggle provider status');
+    return res.json();
+  },
+
+  async deleteAiProvider(id: string): Promise<{ success: boolean }> {
+    const res = await fetch(`${BASE_URL}/ai-assistant/providers/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
+    if (!res.ok) throw new Error('Failed to delete provider');
+    return res.json();
+  },
+
+  async testAiConnection(payload: {
+    providerId: string;
+    modelId: string;
+    baseUrl: string;
+    apiKey?: string;
+    useCustomBaseUrl?: boolean;
+    savedProviderId?: string;
+  }): Promise<AiConnectionTestResult> {
+    const res = await fetch(`${BASE_URL}/ai-assistant/test-connection`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Connection test failed' }));
+      throw new Error(err.error || err.message || 'Connection test failed');
+    }
+    return res.json();
+  },
+
+  async discoverAiModels(payload: {
+    providerId: string;
+    baseUrl: string;
+    apiKey?: string;
+    useCustomBaseUrl?: boolean;
+    savedProviderId?: string;
+  }): Promise<{ success: boolean; models: Array<{ id: string; name: string; description?: string }> }> {
+    const res = await fetch(`${BASE_URL}/ai-assistant/discover-models`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Model discovery failed' }));
+      throw new Error(err.error || err.message || 'Failed to discover models');
+    }
+    return res.json();
+  },
+
+  async sendAiChatMessage(payload: {
+    message?: string;
+    history?: AiChatMessage[];
+    context?: AiAssistantContext;
+    confirmedAction?: {
+      actionType: string;
+      payload: any;
+    };
+  }): Promise<{
+    message: AiChatMessage;
+    provider: { id: string; providerId: string; modelDisplayName: string; modelId: string } | null;
+  }> {
+    const res = await fetch(`${BASE_URL}/ai-assistant/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'AI Assistant query failed' }));
+      throw new Error(err.error || err.message || 'Failed to query AI Assistant');
+    }
+    return res.json();
+  },
+
+  async runAiAssistantTestSuite(): Promise<any> {
+    const res = await fetch(`${BASE_URL}/ai-assistant/test-suite`);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'AI Assistant test suite failed' }));
+      throw new Error(err.error || err.message || 'Failed to execute AI assistant test suite');
+    }
+    return res.json();
+  },
+
+  // ==========================================
+  // RELIABLE UPLOAD API
+  // ==========================================
+
+  uploadFiles(
+    files: File[],
+    metadata?: { platform?: string; source?: string; notes?: string; relativePaths?: string[] },
+    onProgress?: (percent: number, loaded: number, total: number) => void
+  ): Promise<BatchUploadResponse> {
+    return new Promise((resolve, reject) => {
+      const formData = new FormData();
+      files.forEach((file) => {
+        formData.append('files', file, file.name);
+      });
+
+      if (metadata) {
+        if (metadata.platform) formData.append('platform', metadata.platform);
+        if (metadata.source) formData.append('source', metadata.source);
+        if (metadata.notes) formData.append('notes', metadata.notes);
+        if (metadata.relativePaths) formData.append('relative_paths', JSON.stringify(metadata.relativePaths));
+      }
+
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', `${BASE_URL}/uploads`);
+
+      if (xhr.upload && onProgress) {
+        xhr.upload.onprogress = (event) => {
+          if (event.lengthComputable) {
+            const percent = Math.round((event.loaded / event.total) * 100);
+            onProgress(percent, event.loaded, event.total);
+          }
+        };
+      }
+
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            const response: BatchUploadResponse = JSON.parse(xhr.responseText);
+            resolve(response);
+          } catch (err) {
+            reject(new Error('Invalid JSON response from upload endpoint.'));
+          }
+        } else {
+          try {
+            const errResponse = JSON.parse(xhr.responseText);
+            reject(new Error(errResponse.error || `Upload failed with HTTP status ${xhr.status}`));
+          } catch (e) {
+            reject(new Error(`Upload failed with HTTP status ${xhr.status}`));
+          }
+        }
+      };
+
+      xhr.onerror = () => {
+        reject(new Error('Network error occurred while uploading file(s).'));
+      };
+
+      xhr.ontimeout = () => {
+        reject(new Error('Upload request timed out.'));
+      };
+
+      xhr.send(formData);
+    });
+  },
+
+  async getUploads(): Promise<UploadRecord[]> {
+    const res = await fetch(`${BASE_URL}/uploads`);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Failed to fetch uploads' }));
+      throw new Error(err.error || err.message || 'Failed to fetch uploads');
+    }
+    return res.json();
+  },
+
+  async getUploadById(id: string): Promise<UploadRecord> {
+    const res = await fetch(`${BASE_URL}/uploads/${id}`);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Upload not found' }));
+      throw new Error(err.error || err.message || 'Upload not found');
+    }
+    return res.json();
+  },
+
+  getUploadFileUrl(id: string): string {
+    return `${BASE_URL}/uploads/${id}/file`;
+  },
+
+  async deleteUpload(id: string): Promise<{ success: boolean; message: string }> {
+    const res = await fetch(`${BASE_URL}/uploads/${id}`, {
+      method: 'DELETE',
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Failed to delete upload' }));
+      throw new Error(err.error || err.message || 'Failed to delete upload');
+    }
+    return res.json();
+  },
+
+  async runUploadTestSuite(): Promise<any> {
+    const res = await fetch(`${BASE_URL}/uploads/test-suite`, {
+      method: 'POST',
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Failed to run upload test suite' }));
+      throw new Error(err.error || err.message || 'Failed to run upload test suite');
+    }
+    return res.json();
+  },
+
+  // ==========================================
+  // TEST DATA SYSTEM
+  // ==========================================
+
+  async getTestDataStatus(): Promise<TestDataStatusResponse> {
+    const res = await fetch(`${BASE_URL}/test-data/status`);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Failed to fetch test data status' }));
+      throw new Error(err.error || err.message || 'Failed to fetch test data status');
+    }
+    return res.json();
+  },
+
+  async addTrialPaper(options?: {
+    subject?: string;
+    subjectCode?: string;
+    year?: number;
+  }): Promise<{ success: boolean; message: string; id: string; paper: HistoricalPaperRecord }> {
+    const res = await fetch(`${BASE_URL}/test-data/trial-paper`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(options || {}),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Failed to add trial paper' }));
+      throw new Error(err.error || err.message || 'Failed to add trial paper');
+    }
+    return res.json();
+  },
+
+  async addFakeSuspiciousPaper(options?: {
+    subject?: string;
+    subjectCode?: string;
+    platform?: string;
+    source?: string;
+  }): Promise<{
+    success: boolean;
+    message: string;
+    id: string;
+    candidate: CandidateRecord;
+    alert?: AlertRecord;
+    review?: ReviewItemRecord;
+  }> {
+    const res = await fetch(`${BASE_URL}/test-data/fake-suspicious`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(options || {}),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Failed to add suspicious test paper' }));
+      throw new Error(err.error || err.message || 'Failed to add suspicious test paper');
+    }
+    return res.json();
+  },
+
+  async addFakeNormalPaper(options?: {
+    subject?: string;
+    subjectCode?: string;
+    platform?: string;
+    source?: string;
+  }): Promise<{
+    success: boolean;
+    message: string;
+    id: string;
+    candidate: CandidateRecord;
+  }> {
+    const res = await fetch(`${BASE_URL}/test-data/fake-normal`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(options || {}),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Failed to add normal test paper' }));
+      throw new Error(err.error || err.message || 'Failed to add normal test paper');
+    }
+    return res.json();
+  },
+
+  async generateTestDataset(): Promise<TestDatasetSummary> {
+    const res = await fetch(`${BASE_URL}/test-data/dataset`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Failed to generate test dataset' }));
+      throw new Error(err.error || err.message || 'Failed to generate test dataset');
+    }
+    return res.json();
+  },
+
+  async clearTestData(): Promise<ClearTestDataResponse> {
+    const res = await fetch(`${BASE_URL}/test-data`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+      credentials: 'include',
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Failed to clear test data' }));
+      throw new Error(err.error || err.message || 'Failed to clear test data');
+    }
+    return res.json();
+  },
+
+  // ==========================================
+  // AUTHENTICATION API METHODS
+  // ==========================================
+
+  async login(payload: { email: string; password: string; rememberMe?: boolean }): Promise<AuthResponse> {
+    const res = await fetch(`${BASE_URL}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.message || 'Invalid email or password.');
+    }
+    if (data.token) {
+      setStoredAuthToken(data.token);
+    }
+    return data;
+  },
+
+  async register(payload: {
+    fullName: string;
+    email: string;
+    password: string;
+    confirmPassword: string;
+    organization?: string;
+  }): Promise<AuthResponse> {
+    const res = await fetch(`${BASE_URL}/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.message || 'Failed to create account.');
+    }
+    if (data.token) {
+      setStoredAuthToken(data.token);
+    }
+    return data;
+  },
+
+  async logout(): Promise<{ success: boolean; message: string }> {
+    try {
+      const res = await fetch(`${BASE_URL}/auth/logout`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        credentials: 'include',
+      });
+      setStoredAuthToken(null);
+      return await res.json();
+    } catch {
+      setStoredAuthToken(null);
+      return { success: true, message: 'Logged out.' };
+    }
+  },
+
+  async getSession(): Promise<{ authenticated: boolean; user: SafeUser | null }> {
+    try {
+      const res = await fetch(`${BASE_URL}/auth/session`, {
+        method: 'GET',
+        headers: getAuthHeaders(),
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        return { authenticated: false, user: null };
+      }
+      return await res.json();
+    } catch {
+      return { authenticated: false, user: null };
+    }
+  },
+
+  async forgotPassword(payload: { email: string }): Promise<{ success: boolean; message: string }> {
+    const res = await fetch(`${BASE_URL}/auth/forgot-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.message || 'Failed to process request.');
+    }
+    return data;
+  },
 };
+

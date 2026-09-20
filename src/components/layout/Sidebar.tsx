@@ -9,10 +9,12 @@ import {
   Database,
   Settings,
   ChevronLeft,
-  Lock,
   FileCheck,
-  FileText
+  FileText,
+  Bot
 } from 'lucide-react';
+import { LeakLensLogo } from '../common/LeakLensLogo';
+import { useAssistant } from '../assistant/AssistantContext';
 
 interface SidebarProps {
   isCollapsed: boolean;
@@ -21,6 +23,7 @@ interface SidebarProps {
 
 export const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, onToggle }) => {
   const [tooltip, setTooltip] = useState<{ label: string; top: number } | null>(null);
+  const { isOpen: isAssistantOpen, toggleAssistant, triggerRef } = useAssistant();
 
   const navSections = [
     {
@@ -73,9 +76,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, onToggle }) => {
       <div className="flex items-center justify-between px-4 h-16 border-b border-[var(--sidebar-border)] shrink-0">
         {!isCollapsed && (
           <div className="flex items-center space-x-3 overflow-hidden">
-            <div className="w-9 h-9 rounded-lg bg-blue-600 flex items-center justify-center text-white shrink-0 shadow-xs">
-              <Lock className="w-5 h-5" />
-            </div>
+            <LeakLensLogo className="w-9 h-9" />
             <div className="truncate">
               <h1 className="font-bold text-base tracking-tight text-slate-900 dark:text-slate-100 truncate">LeakLens</h1>
               <span className="text-[10px] text-emerald-500 font-semibold uppercase tracking-wider">Exam Intelligence</span>
@@ -85,11 +86,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, onToggle }) => {
         {isCollapsed && (
           <button
             onClick={onToggle}
-            className="mx-auto w-9 h-9 rounded-lg bg-blue-600 flex items-center justify-center text-white shadow-xs hover:bg-blue-700 transition-colors cursor-pointer"
+            className="mx-auto w-10 h-10 p-1 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700/80 flex items-center justify-center shadow-xs hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors cursor-pointer"
             title="Open sidebar"
             aria-label="Open sidebar"
           >
-            <Lock className="w-5 h-5" />
+            <LeakLensLogo className="w-8 h-8" />
           </button>
         )}
         {!isCollapsed && (
@@ -105,7 +106,45 @@ export const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, onToggle }) => {
       </div>
 
       {/* Navigation Sections */}
-      <div className="flex-1 overflow-y-auto py-4 px-3 space-y-4">
+      <div className="flex-1 overflow-y-auto py-3 px-3 space-y-3.5">
+        {/* Assistant Action (Positioned Above Dashboard) */}
+        <div className="space-y-1">
+          {!isCollapsed && (
+            <div className="px-3 pb-0.5 flex items-center justify-between">
+              <span className="text-[10px] font-bold tracking-wider text-slate-400 dark:text-slate-500 uppercase select-none">
+                INTELLIGENCE
+              </span>
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-blue-100 dark:bg-blue-900/60 text-blue-600 dark:text-blue-300">
+                COPILOT
+              </span>
+            </div>
+          )}
+          <button
+            ref={triggerRef}
+            type="button"
+            onClick={toggleAssistant}
+            onMouseEnter={(e) => handleMouseEnter(e, 'LeakLens AI Assistant')}
+            onMouseLeave={handleMouseLeave}
+            aria-expanded={isAssistantOpen}
+            aria-controls="assistant-drawer"
+            className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-xs font-semibold transition-all duration-150 active:scale-[0.99] cursor-pointer select-none relative shadow-2xs ${
+              isAssistantOpen
+                ? 'bg-blue-600 text-white font-semibold border border-blue-600 shadow-sm'
+                : 'bg-blue-50/70 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 hover:bg-blue-100/80 dark:hover:bg-blue-900/50 border border-blue-200/80 dark:border-blue-800/60'
+            } ${isCollapsed ? 'justify-center px-0' : ''}`}
+            title="Toggle LeakLens AI Assistant (or drag from right edge)"
+            aria-label="Toggle LeakLens AI Assistant"
+          >
+            <Bot className={`w-4 h-4 shrink-0 ${isAssistantOpen ? 'text-white' : 'text-blue-600 dark:text-blue-400'}`} />
+            {!isCollapsed && (
+              <div className="flex items-center justify-between flex-1 min-w-0">
+                <span className="truncate">AI Assistant</span>
+                <span className={`w-2 h-2 rounded-full shrink-0 ${isAssistantOpen ? 'bg-white' : 'bg-blue-500 animate-pulse'}`} />
+              </div>
+            )}
+          </button>
+        </div>
+
         {navSections.map((section, sIdx) => (
           <div key={sIdx} className="space-y-1">
             {!isCollapsed && (
@@ -140,33 +179,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, onToggle }) => {
           </div>
         ))}
       </div>
-
-      {/* Profile Details at Bottom - ONLY shown when Sidebar is OPEN */}
-      {!isCollapsed && (
-        <div className="p-3 border-t border-[var(--sidebar-border)] bg-slate-50/60 dark:bg-slate-900/60 shrink-0">
-          <div className="flex items-center gap-3 p-2.5 rounded-xl bg-white dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700/60 shadow-2xs">
-            <div className="relative shrink-0">
-              <div className="w-9 h-9 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-bold ring-2 ring-blue-500/20">
-                EX
-              </div>
-              <span
-                className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-white dark:ring-slate-800"
-                title="Active & Authenticated"
-              />
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-xs font-semibold text-slate-900 dark:text-slate-100 truncate">
-                Exam Operations
-              </p>
-              <div className="flex items-center gap-1.5 mt-0.5">
-                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200/60 dark:border-blue-800/40">
-                  Security Officer
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Floating Tooltip Portal / Fixed overlay when collapsed */}
       {isCollapsed && tooltip && (

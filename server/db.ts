@@ -10,6 +10,11 @@ import {
   SocialSourceRecord,
   SystemSettings,
   AuditLogEntry,
+  AiProviderConfig,
+  AiConnectionStatus,
+  UploadRecord,
+  UserRecord,
+  SessionRecord,
 } from './types';
 import { STORAGE_ROOT } from './storage';
 
@@ -23,6 +28,10 @@ export interface DatabaseSchema {
   socialSources: SocialSourceRecord[];
   settings: SystemSettings;
   auditLogs: AuditLogEntry[];
+  aiProviders: AiProviderConfig[];
+  uploads: UploadRecord[];
+  users: UserRecord[];
+  sessions: SessionRecord[];
 }
 
 const DB_FILE = path.join(STORAGE_ROOT, 'db.json');
@@ -104,6 +113,10 @@ class Database {
     socialSources: [...DEFAULT_SOCIAL_SOURCES],
     settings: { ...DEFAULT_SETTINGS },
     auditLogs: [],
+    aiProviders: [],
+    uploads: [],
+    users: [],
+    sessions: [],
   };
 
   constructor() {
@@ -125,6 +138,10 @@ class Database {
           socialSources: parsed.socialSources || [...DEFAULT_SOCIAL_SOURCES],
           settings: parsed.settings || { ...DEFAULT_SETTINGS },
           auditLogs: parsed.auditLogs || [],
+          aiProviders: parsed.aiProviders || [],
+          uploads: parsed.uploads || [],
+          users: parsed.users || [],
+          sessions: parsed.sessions || [],
         };
       } else {
         this.save();
@@ -320,6 +337,27 @@ class Database {
     return true;
   }
 
+  public deleteAllHistoricalPapers(): { count: number; deletedPaths: string[] } {
+    const count = this.data.historicalPapers.length;
+    const deletedPaths: string[] = [];
+
+    for (const paper of this.data.historicalPapers) {
+      if (paper.storagePath && fs.existsSync(paper.storagePath)) {
+        try {
+          fs.unlinkSync(paper.storagePath);
+          deletedPaths.push(paper.storagePath);
+        } catch (e) {
+          console.warn(`Failed to unlink storage path for historical paper ${paper.id}:`, e);
+        }
+      }
+    }
+
+    this.data.historicalPapers = [];
+    this.logAudit('ALL_HISTORICAL_PAPERS_DELETED', 'HISTORICAL_PAPER', 'ALL', 'SUCCESS', `Permanently deleted all ${count} historical papers and associated storage/vector files.`);
+    this.save();
+    return { count, deletedPaths };
+  }
+
   // --- REAL PAPERS ---
   public getRealPapers(filters?: { status?: string; search?: string }): RealPaperRecord[] {
     let list = [...this.data.realPapers];
@@ -369,6 +407,27 @@ class Database {
     this.logAudit('REAL_PAPER_DELETED', 'REAL_PAPER', id, 'SUCCESS', `Deleted real paper reference ${paper.filename} (${id})`);
     this.save();
     return true;
+  }
+
+  public deleteAllRealPapers(): { count: number; deletedPaths: string[] } {
+    const count = this.data.realPapers.length;
+    const deletedPaths: string[] = [];
+
+    for (const paper of this.data.realPapers) {
+      if (paper.storagePath && fs.existsSync(paper.storagePath)) {
+        try {
+          fs.unlinkSync(paper.storagePath);
+          deletedPaths.push(paper.storagePath);
+        } catch (e) {
+          console.warn(`Failed to unlink storage path for real paper ${paper.id}:`, e);
+        }
+      }
+    }
+
+    this.data.realPapers = [];
+    this.logAudit('ALL_REAL_PAPERS_DELETED', 'REAL_PAPER', 'ALL', 'SUCCESS', `Permanently deleted all ${count} verified baseline papers and associated files.`);
+    this.save();
+    return { count, deletedPaths };
   }
 
   // --- EXAM METADATA ---
@@ -580,6 +639,600 @@ class Database {
       monitoringSources: this.data.socialSources,
       systemStatus: this.data.settings.monitoringActive ? 'OPERATIONAL' : 'PAUSED',
     };
+  }
+
+  // --- AI ASSISTANT PROVIDER SETTINGS & CREDENTIALS ---
+
+  /**
+   * Helper to mask stored API keys for secure frontend transmission.
+   * Never exposes raw secret keys in responses.
+   */
+  public static maskApiKey(key?: string): string {
+    if (!key || key.trim().length === 0) return '';
+    const trimmed = key.trim();
+    if (trimmed.length <= 8) return '••••••••';
+    return `${trimmed.slice(0, 3)}••••••••${trimmed.slice(-4)}`;
+  }
+
+  /**
+   * Returns list of configured providers with masked API keys.
+   */
+  public getAiProviders(): AiProviderConfig[] {
+    return this.data.aiProviders.map((p) => ({
+      ...p,
+      hasApiKey: !!(p.apiKey && p.apiKey.trim().length > 0),
+      maskedApiKey: Database.maskApiKey(p.apiKey),
+      apiKey: undefined, // Strip raw key
+    }));
+  }
+
+  /**
+   * Gets a single provider config.
+   * If includeSecret is false (default), strips the raw API key.
+   */
+  public getAiProviderById(id: string, includeSecret = false): AiProviderConfig | undefined {
+    const provider = this.data.aiProviders.find((p) => p.id === id);
+    if (!provider) return undefined;
+    if (includeSecret) {
+      return { ...provider };
+    }
+    return {
+      ...provider,
+      hasApiKey: !!(provider.apiKey && provider.apiKey.trim().length > 0),
+      maskedApiKey: Database.maskApiKey(provider.apiKey),
+      apiKey: undefined,
+    };
+  }
+
+  /**
+   * Returns the current active default AI provider (for Assistant operations).
+   */
+  public getDefaultAiProvider(includeSecret = false): AiProviderConfig | undefined {
+    const provider = this.data.aiProviders.find((p) => p.isDefault && p.enabled);
+    if (!provider) return undefined;
+    if (includeSecret) {
+      return { ...provider };
+    }
+    return {
+      ...provider,
+      hasApiKey: !!(provider.apiKey && provider.apiKey.trim().length > 0),
+      maskedApiKey: Database.maskApiKey(provider.apiKey),
+      apiKey: undefined,
+    };
+  }
+
+  /**
+   * Saves or updates an AI Assistant provider configuration.
+   * Handles secret retention, credential changes, and connection state invalidation.
+   */
+  public saveAiProvider(input: {
+    id?: string;
+    providerId: string;
+    modelDisplayName: string;
+    modelName: string;
+    modelId: string;
+    baseUrl: string;
+    useCustomBaseUrl: boolean;
+    apiKey?: string;
+    enabled?: boolean;
+    isDefault?: boolean;
+    status?: AiConnectionStatus;
+    lastTestedAt?: string;
+    lastResponseTimeMs?: number;
+    lastError?: string;
+  }): AiProviderConfig {
+    const now = new Date().toISOString();
+    const existingIndex = input.id ? this.data.aiProviders.findIndex((p) => p.id === input.id) : -1;
+
+    let targetId = input.id || `PROV-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    let finalApiKey = input.apiKey?.trim();
+
+    // If updating and new apiKey was not provided or is masked placeholder, keep existing key
+    if (existingIndex >= 0) {
+      const existing = this.data.aiProviders[existingIndex];
+      targetId = existing.id;
+      if (!finalApiKey || finalApiKey.includes('••••')) {
+        finalApiKey = existing.apiKey;
+      }
+
+      // Check if critical configuration parameters changed
+      const configChanged =
+        existing.providerId !== input.providerId ||
+        existing.baseUrl !== input.baseUrl ||
+        existing.modelId !== input.modelId ||
+        (input.apiKey && input.apiKey !== existing.apiKey && !input.apiKey.includes('••••'));
+
+      // If configuration was altered after being connected, reset state to NOT_TESTED per spec
+      let newStatus: AiConnectionStatus = input.status || existing.status;
+      if (configChanged && !input.status) {
+        newStatus = 'NOT_TESTED';
+      }
+
+      const isDefault = input.isDefault !== undefined ? input.isDefault : existing.isDefault;
+      if (isDefault) {
+        this.data.aiProviders.forEach((p) => {
+          p.isDefault = false;
+        });
+      }
+
+      const updated: AiProviderConfig = {
+        ...existing,
+        providerId: input.providerId,
+        modelDisplayName: input.modelDisplayName,
+        modelName: input.modelName,
+        modelId: input.modelId,
+        baseUrl: input.baseUrl,
+        useCustomBaseUrl: input.useCustomBaseUrl ?? existing.useCustomBaseUrl,
+        apiKey: finalApiKey,
+        status: newStatus,
+        lastTestedAt: input.lastTestedAt !== undefined ? input.lastTestedAt : (configChanged ? undefined : existing.lastTestedAt),
+        lastResponseTimeMs: input.lastResponseTimeMs !== undefined ? input.lastResponseTimeMs : (configChanged ? undefined : existing.lastResponseTimeMs),
+        lastError: input.lastError !== undefined ? input.lastError : (configChanged ? undefined : existing.lastError),
+        enabled: input.enabled !== undefined ? input.enabled : existing.enabled,
+        isDefault,
+        updatedAt: now,
+      };
+
+      this.data.aiProviders[existingIndex] = updated;
+      this.logAudit(
+        'AI_PROVIDER_UPDATED',
+        'AI_ASSISTANT',
+        updated.id,
+        'SUCCESS',
+        `Updated AI provider configuration for ${updated.modelDisplayName} (${updated.providerId})`
+      );
+      this.save();
+
+      return {
+        ...updated,
+        hasApiKey: !!(updated.apiKey && updated.apiKey.length > 0),
+        maskedApiKey: Database.maskApiKey(updated.apiKey),
+        apiKey: undefined,
+      };
+    } else {
+      // Create new provider
+      const isFirst = this.data.aiProviders.length === 0;
+      const isDefault = input.isDefault ?? isFirst;
+
+      if (isDefault) {
+        this.data.aiProviders.forEach((p) => {
+          p.isDefault = false;
+        });
+      }
+
+      const newProvider: AiProviderConfig = {
+        id: targetId,
+        providerId: input.providerId,
+        modelDisplayName: input.modelDisplayName,
+        modelName: input.modelName,
+        modelId: input.modelId,
+        baseUrl: input.baseUrl,
+        useCustomBaseUrl: input.useCustomBaseUrl || false,
+        apiKey: finalApiKey || '',
+        status: input.status || 'NOT_TESTED',
+        lastTestedAt: input.lastTestedAt,
+        lastResponseTimeMs: input.lastResponseTimeMs,
+        lastError: input.lastError,
+        enabled: input.enabled !== undefined ? input.enabled : true,
+        isDefault,
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      this.data.aiProviders.push(newProvider);
+      this.logAudit(
+        'AI_PROVIDER_CREATED',
+        'AI_ASSISTANT',
+        newProvider.id,
+        'SUCCESS',
+        `Configured new AI assistant provider ${newProvider.modelDisplayName} (${newProvider.providerId})`
+      );
+      this.save();
+
+      return {
+        ...newProvider,
+        hasApiKey: !!(newProvider.apiKey && newProvider.apiKey.length > 0),
+        maskedApiKey: Database.maskApiKey(newProvider.apiKey),
+        apiKey: undefined,
+      };
+    }
+  }
+
+  /**
+   * Sets a specific provider as the default active AI Assistant provider.
+   */
+  public setDefaultAiProvider(id: string): boolean {
+    const target = this.data.aiProviders.find((p) => p.id === id);
+    if (!target) return false;
+
+    this.data.aiProviders.forEach((p) => {
+      p.isDefault = p.id === id;
+    });
+
+    this.logAudit(
+      'AI_PROVIDER_DEFAULT_CHANGED',
+      'AI_ASSISTANT',
+      id,
+      'SUCCESS',
+      `Set ${target.modelDisplayName} (${target.providerId}) as the default Assistant provider`
+    );
+    this.save();
+    return true;
+  }
+
+  /**
+   * Toggles enabled / disabled state for a provider.
+   */
+  public toggleAiProvider(id: string, enabled: boolean): AiProviderConfig | undefined {
+    const target = this.data.aiProviders.find((p) => p.id === id);
+    if (!target) return undefined;
+
+    target.enabled = enabled;
+    if (!enabled && target.status === 'CONNECTED') {
+      target.status = 'DISABLED';
+    } else if (enabled && target.status === 'DISABLED') {
+      target.status = target.lastTestedAt ? 'CONNECTED' : 'NOT_TESTED';
+    }
+    target.updatedAt = new Date().toISOString();
+
+    this.logAudit(
+      'AI_PROVIDER_TOGGLED',
+      'AI_ASSISTANT',
+      id,
+      'SUCCESS',
+      `${enabled ? 'Enabled' : 'Disabled'} provider ${target.modelDisplayName}`
+    );
+    this.save();
+
+    return {
+      ...target,
+      hasApiKey: !!(target.apiKey && target.apiKey.length > 0),
+      maskedApiKey: Database.maskApiKey(target.apiKey),
+      apiKey: undefined,
+    };
+  }
+
+  /**
+   * Deletes a provider configuration.
+   */
+  public deleteAiProvider(id: string): boolean {
+    const index = this.data.aiProviders.findIndex((p) => p.id === id);
+    if (index === -1) return false;
+
+    const deleted = this.data.aiProviders.splice(index, 1)[0];
+
+    // If deleted was default, make the next enabled provider default
+    if (deleted.isDefault && this.data.aiProviders.length > 0) {
+      const nextActive = this.data.aiProviders.find((p) => p.enabled) || this.data.aiProviders[0];
+      nextActive.isDefault = true;
+    }
+
+    this.logAudit(
+      'AI_PROVIDER_DELETED',
+      'AI_ASSISTANT',
+      id,
+      'SUCCESS',
+      `Deleted provider configuration ${deleted.modelDisplayName} (${deleted.providerId})`
+    );
+    this.save();
+    return true;
+  }
+
+  /**
+   * Updates test status result for a provider.
+   */
+  public updateAiProviderStatus(
+    id: string,
+    status: AiConnectionStatus,
+    responseTimeMs?: number,
+    error?: string
+  ): AiProviderConfig | undefined {
+    const target = this.data.aiProviders.find((p) => p.id === id);
+    if (!target) return undefined;
+
+    target.status = status;
+    if (status === 'CONNECTED') {
+      target.lastTestedAt = new Date().toISOString();
+      target.lastResponseTimeMs = responseTimeMs;
+      target.lastError = undefined;
+    } else if (status === 'ERROR') {
+      target.lastError = error;
+    }
+    target.updatedAt = new Date().toISOString();
+    this.save();
+
+    return {
+      ...target,
+      hasApiKey: !!(target.apiKey && target.apiKey.length > 0),
+      maskedApiKey: Database.maskApiKey(target.apiKey),
+      apiKey: undefined,
+    };
+  }
+
+  // ==========================================
+  // UPLOADS REPOSITORY
+  // ==========================================
+
+  public getUploads(): UploadRecord[] {
+    return [...(this.data.uploads || [])];
+  }
+
+  public getUploadById(id: string): UploadRecord | undefined {
+    return (this.data.uploads || []).find((u) => u.upload_id === id);
+  }
+
+  public findUploadBySha256(sha256: string): UploadRecord | undefined {
+    return (this.data.uploads || []).find((u) => u.sha256 === sha256);
+  }
+
+  public getNextUploadId(): string {
+    const existing = this.data.uploads || [];
+    const maxNumber = existing.reduce((max, item) => {
+      const match = item.upload_id.match(/UP-(\d+)/);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        return num > max ? num : max;
+      }
+      return max;
+    }, 1000);
+    return `UP-${maxNumber + 1}`;
+  }
+
+  public addUpload(record: UploadRecord): UploadRecord {
+    if (!this.data.uploads) {
+      this.data.uploads = [];
+    }
+    this.data.uploads.unshift(record);
+    this.save();
+
+    this.logAudit(
+      'FILE_UPLOADED',
+      'DOCUMENT_UPLOAD',
+      record.upload_id,
+      record.status === 'UPLOAD_FAILED' ? 'FAILURE' : 'SUCCESS',
+      `Uploaded file: ${record.original_filename} (${(record.size / 1024).toFixed(1)} KB, SHA: ${record.sha256.slice(0, 8)})`
+    );
+
+    return record;
+  }
+
+  public updateUpload(id: string, updates: Partial<UploadRecord>): UploadRecord | undefined {
+    const target = (this.data.uploads || []).find((u) => u.upload_id === id);
+    if (!target) return undefined;
+
+    Object.assign(target, updates);
+    this.save();
+    return target;
+  }
+
+  public deleteUpload(id: string): boolean {
+    const idx = (this.data.uploads || []).findIndex((u) => u.upload_id === id);
+    if (idx === -1) return false;
+
+    const [deleted] = this.data.uploads.splice(idx, 1);
+    this.save();
+
+    this.logAudit(
+      'UPLOAD_DELETED',
+      'DOCUMENT_UPLOAD',
+      id,
+      'SUCCESS',
+      `Deleted uploaded record: ${deleted.original_filename}`
+    );
+
+    return true;
+  }
+
+  // ==========================================
+  // TEST DATA SYSTEM & SURGICAL PURGE
+  // ==========================================
+
+  public getTestDataStatus() {
+    const isCandidateTest = (c: CandidateRecord) =>
+      c.isTestData === true || c.sourceType === 'TEST_FIXTURE' || c.id.startsWith('DC-TEST') || c.id.startsWith('CAND-TEST');
+    const isHistoricalTest = (p: HistoricalPaperRecord) =>
+      p.isTestData === true || p.sourceType === 'TEST_FIXTURE' || p.id.includes('TRIAL') || p.id.includes('TEST');
+    const isRealPaperTest = (p: RealPaperRecord) =>
+      p.isTestData === true || p.sourceType === 'TEST_FIXTURE' || p.id.includes('TEST');
+    
+    const testCandidateIds = new Set(this.data.candidates.filter(isCandidateTest).map((c) => c.id));
+    const isAlertTest = (a: AlertRecord) =>
+      a.isTestData === true || a.sourceType === 'TEST_FIXTURE' || a.id.includes('TEST') || testCandidateIds.has(a.candidateId);
+    const isReviewTest = (r: ReviewItemRecord) =>
+      r.isTestData === true || r.sourceType === 'TEST_FIXTURE' || r.id.includes('TEST') || testCandidateIds.has(r.candidateId);
+
+    const testCandidates = this.data.candidates.filter(isCandidateTest);
+    const realCandidates = this.data.candidates.filter((c) => !isCandidateTest(c));
+
+    const testHistorical = this.data.historicalPapers.filter(isHistoricalTest);
+    const realHistorical = this.data.historicalPapers.filter((p) => !isHistoricalTest(p));
+
+    const testRealPapers = this.data.realPapers.filter(isRealPaperTest);
+    const realRealPapers = this.data.realPapers.filter((p) => !isRealPaperTest(p));
+
+    const testAlerts = this.data.alerts.filter(isAlertTest);
+    const realAlerts = this.data.alerts.filter((a) => !isAlertTest(a));
+
+    const testReviews = this.data.reviews.filter(isReviewTest);
+    const realReviews = this.data.reviews.filter((r) => !isReviewTest(r));
+
+    return {
+      enabled: process.env.APP_ENV !== 'production' || process.env.ENABLE_TEST_DATA === 'true',
+      testCandidatesCount: testCandidates.length,
+      realCandidatesCount: realCandidates.length,
+      testHistoricalCount: testHistorical.length,
+      realHistoricalCount: realHistorical.length,
+      testRealPapersCount: testRealPapers.length,
+      realRealPapersCount: realRealPapers.length,
+      testAlertsCount: testAlerts.length,
+      realAlertsCount: realAlerts.length,
+      testReviewsCount: testReviews.length,
+      realReviewsCount: realReviews.length,
+      totalTestItems: testCandidates.length + testHistorical.length + testRealPapers.length + testAlerts.length + testReviews.length,
+    };
+  }
+
+  public clearTestData(): {
+    success: boolean;
+    message: string;
+    clearedCandidates: number;
+    clearedHistorical: number;
+    clearedRealPapers: number;
+    clearedAlerts: number;
+    clearedReviews: number;
+    deletedFilesCount: number;
+  } {
+    const isCandidateTest = (c: CandidateRecord) =>
+      c.isTestData === true || c.sourceType === 'TEST_FIXTURE' || c.id.startsWith('DC-TEST') || c.id.startsWith('CAND-TEST');
+    const isHistoricalTest = (p: HistoricalPaperRecord) =>
+      p.isTestData === true || p.sourceType === 'TEST_FIXTURE' || p.id.includes('TRIAL') || p.id.includes('TEST');
+    const isRealPaperTest = (p: RealPaperRecord) =>
+      p.isTestData === true || p.sourceType === 'TEST_FIXTURE' || p.id.includes('TEST');
+
+    const testCandidateRecords = this.data.candidates.filter(isCandidateTest);
+    const testCandidateIds = new Set(testCandidateRecords.map((c) => c.id));
+
+    const testHistoricalRecords = this.data.historicalPapers.filter(isHistoricalTest);
+    const testRealPaperRecords = this.data.realPapers.filter(isRealPaperTest);
+
+    const isAlertTest = (a: AlertRecord) =>
+      a.isTestData === true || a.sourceType === 'TEST_FIXTURE' || a.id.includes('TEST') || testCandidateIds.has(a.candidateId);
+    const isReviewTest = (r: ReviewItemRecord) =>
+      r.isTestData === true || r.sourceType === 'TEST_FIXTURE' || r.id.includes('TEST') || testCandidateIds.has(r.candidateId);
+
+    const testAlertRecords = this.data.alerts.filter(isAlertTest);
+    const testReviewRecords = this.data.reviews.filter(isReviewTest);
+
+    let deletedFilesCount = 0;
+
+    // Delete candidate storage files
+    for (const c of testCandidateRecords) {
+      if (c.storagePath && fs.existsSync(c.storagePath)) {
+        try {
+          fs.unlinkSync(c.storagePath);
+          deletedFilesCount++;
+        } catch (e) {
+          console.warn(`Failed to unlink test candidate file ${c.storagePath}:`, e);
+        }
+      }
+    }
+
+    // Delete historical storage files
+    for (const h of testHistoricalRecords) {
+      if (h.storagePath && fs.existsSync(h.storagePath)) {
+        try {
+          fs.unlinkSync(h.storagePath);
+          deletedFilesCount++;
+        } catch (e) {
+          console.warn(`Failed to unlink test historical file ${h.storagePath}:`, e);
+        }
+      }
+    }
+
+    // Delete real paper storage files
+    for (const r of testRealPaperRecords) {
+      if (r.storagePath && fs.existsSync(r.storagePath)) {
+        try {
+          fs.unlinkSync(r.storagePath);
+          deletedFilesCount++;
+        } catch (e) {
+          console.warn(`Failed to unlink test real paper file ${r.storagePath}:`, e);
+        }
+      }
+    }
+
+    // Purge only test items from arrays
+    this.data.candidates = this.data.candidates.filter((c) => !isCandidateTest(c));
+    this.data.historicalPapers = this.data.historicalPapers.filter((p) => !isHistoricalTest(p));
+    this.data.realPapers = this.data.realPapers.filter((p) => !isRealPaperTest(p));
+    this.data.alerts = this.data.alerts.filter((a) => !isAlertTest(a));
+    this.data.reviews = this.data.reviews.filter((r) => !isReviewTest(r));
+
+    this.logAudit(
+      'TEST_DATA_PURGED',
+      'DETECTED_CONTENT',
+      'ALL_TEST_DATA',
+      'SUCCESS',
+      `Surgically cleared ${testCandidateRecords.length} candidate(s), ${testHistoricalRecords.length} historical paper(s), ${testRealPaperRecords.length} verified paper(s), ${testAlertRecords.length} alert(s), ${testReviewRecords.length} review(s), and deleted ${deletedFilesCount} physical test file(s). Real user records remain intact.`
+    );
+
+    this.save();
+
+    return {
+      success: true,
+      message: `Cleared ${testCandidateRecords.length} test detected content, ${testHistoricalRecords.length} trial historical papers, ${testRealPaperRecords.length} test verified papers, ${testAlertRecords.length} test alerts, and ${testReviewRecords.length} test review items.`,
+      clearedCandidates: testCandidateRecords.length,
+      clearedHistorical: testHistoricalRecords.length,
+      clearedRealPapers: testRealPaperRecords.length,
+      clearedAlerts: testAlertRecords.length,
+      clearedReviews: testReviewRecords.length,
+      deletedFilesCount,
+    };
+  }
+
+  // ==========================================
+  // USERS & SESSIONS DATA ACCESS
+  // ==========================================
+
+  getUsers(): UserRecord[] {
+    return [...(this.data.users || [])];
+  }
+
+  getUserById(id: string): UserRecord | undefined {
+    return (this.data.users || []).find((u) => u.id === id);
+  }
+
+  getUserByEmail(email: string): UserRecord | undefined {
+    if (!email) return undefined;
+    const lower = email.trim().toLowerCase();
+    return (this.data.users || []).find((u) => u.email.toLowerCase() === lower);
+  }
+
+  createUser(user: UserRecord): UserRecord {
+    if (!this.data.users) this.data.users = [];
+    this.data.users.push(user);
+    this.save();
+    return user;
+  }
+
+  updateUser(id: string, updates: Partial<UserRecord>): UserRecord | null {
+    const idx = (this.data.users || []).findIndex((u) => u.id === id);
+    if (idx === -1) return null;
+    this.data.users[idx] = { ...this.data.users[idx], ...updates };
+    this.save();
+    return this.data.users[idx];
+  }
+
+  createSession(session: SessionRecord): SessionRecord {
+    if (!this.data.sessions) this.data.sessions = [];
+    // Clean up expired sessions first
+    const now = Date.now();
+    this.data.sessions = this.data.sessions.filter(
+      (s) => new Date(s.expiresAt).getTime() > now
+    );
+    this.data.sessions.push(session);
+    this.save();
+    return session;
+  }
+
+  getSession(token: string): SessionRecord | undefined {
+    if (!token) return undefined;
+    return (this.data.sessions || []).find((s) => s.token === token);
+  }
+
+  deleteSession(token: string): boolean {
+    if (!token || !this.data.sessions) return false;
+    const prevLen = this.data.sessions.length;
+    this.data.sessions = this.data.sessions.filter((s) => s.token !== token);
+    const deleted = this.data.sessions.length < prevLen;
+    if (deleted) this.save();
+    return deleted;
+  }
+
+  deleteUserSessions(userId: string): void {
+    if (!userId || !this.data.sessions) return;
+    this.data.sessions = this.data.sessions.filter((s) => s.userId !== userId);
+    this.save();
   }
 }
 

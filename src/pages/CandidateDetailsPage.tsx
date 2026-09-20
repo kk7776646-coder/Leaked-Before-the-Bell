@@ -26,6 +26,9 @@ import {
   Archive,
   RotateCcw,
   FileCheck2,
+  LayoutTemplate,
+  FileSearch,
+  Eye,
 } from 'lucide-react';
 import { api, CandidateRecord } from '../services/api';
 import { ReviewDecision } from '../types/review';
@@ -38,6 +41,8 @@ export const CandidateDetailsPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [toast, setToast] = useState<ToastNotification | null>(null);
+  const [targetPage, setTargetPage] = useState<number>(1);
+  const [mobileTab, setMobileTab] = useState<'document' | 'comparison' | 'ocr'>('document');
 
   useEffect(() => {
     if (!id) return;
@@ -127,6 +132,11 @@ export const CandidateDetailsPage: React.FC = () => {
     }
   };
 
+  const handleJumpToPage = (pageNum: number) => {
+    setTargetPage(pageNum);
+    setMobileTab('document');
+  };
+
   if (loading) {
     return (
       <ResponsiveContainer>
@@ -158,8 +168,6 @@ export const CandidateDetailsPage: React.FC = () => {
       </ResponsiveContainer>
     );
   }
-
-  const documentUrl = api.getCandidateDocumentUrl(candidate.id);
 
   return (
     <ResponsiveContainer>
@@ -284,17 +292,63 @@ export const CandidateDetailsPage: React.FC = () => {
         />
       </div>
 
+      {/* 📱 MOBILE VIEW SELECTOR TABS (Prevents horizontal scroll on small devices) 📱 */}
+      <div className="xl:hidden flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl mb-4 font-sans text-xs font-semibold">
+        <button
+          onClick={() => setMobileTab('document')}
+          className={`flex-1 py-2 rounded-lg flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
+            mobileTab === 'document'
+              ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-xs'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+          }`}
+        >
+          <Eye className="w-4 h-4 text-blue-500" />
+          Document
+        </button>
+        <button
+          onClick={() => setMobileTab('comparison')}
+          className={`flex-1 py-2 rounded-lg flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
+            mobileTab === 'comparison'
+              ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-xs'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+          }`}
+        >
+          <ShieldCheck className="w-4 h-4 text-emerald-500" />
+          Comparison
+        </button>
+        <button
+          onClick={() => setMobileTab('ocr')}
+          className={`flex-1 py-2 rounded-lg flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
+            mobileTab === 'ocr'
+              ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-xs'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+          }`}
+        >
+          <FileSearch className="w-4 h-4 text-amber-500" />
+          Decision
+        </button>
+      </div>
+
       {/* Main Grid: Document Viewer + Forensics Analysis */}
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 font-sans items-start">
-        {/* Left Column: Real Document Viewer & Extracted OCR */}
-        <div className="xl:col-span-7 space-y-6">
-          <DocumentViewer candidate={candidate} />
+        {/* Left Column: Real Document Viewer & Extracted OCR (always visible on desktop, tabbed on mobile) */}
+        <div className={`xl:col-span-7 space-y-6 ${mobileTab !== 'document' ? 'hidden xl:block' : 'block'}`}>
+          <DocumentViewer
+            candidate={candidate}
+            targetPage={targetPage}
+            onPageChange={(page) => setTargetPage(page)}
+          />
         </div>
 
         {/* Right Column: Question Forensics Matrix & Evidence & Review Action */}
-        <div className="xl:col-span-5 space-y-6">
-          {/* Question Forensics Matrix */}
-          <QuestionForensicsMatrix candidate={candidate} />
+        <div className={`xl:col-span-5 space-y-6 ${mobileTab === 'document' ? 'hidden xl:block' : 'block'}`}>
+          {/* Question Forensics Matrix (Jump to document page enabled) */}
+          <div className={mobileTab === 'ocr' ? 'hidden xl:block' : 'block'}>
+            <QuestionForensicsMatrix
+              candidate={candidate}
+              onJumpToPage={handleJumpToPage}
+            />
+          </div>
 
           {/* Reference Paper Metadata Alignment Card */}
           {candidate.matchedReferencePaper && (
@@ -345,12 +399,6 @@ export const CandidateDetailsPage: React.FC = () => {
                 <span className="text-slate-500">SHA-256 Digest</span>
                 <span className="font-mono text-[11px] text-slate-800 dark:text-slate-200 truncate max-w-[200px]" title={candidate.sha256}>
                   {candidate.sha256}
-                </span>
-              </div>
-              <div className="flex items-center justify-between py-1.5">
-                <span className="text-slate-500">Storage Location</span>
-                <span className="font-mono text-[11px] text-slate-800 dark:text-slate-200">
-                  {candidate.storagePath}
                 </span>
               </div>
               <div className="flex items-center justify-between py-1.5">

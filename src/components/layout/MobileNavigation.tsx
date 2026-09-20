@@ -12,6 +12,7 @@ import {
   FileCheck,
   FileText
 } from 'lucide-react';
+import { LeakLensLogo } from '../common/LeakLensLogo';
 
 interface MobileNavigationProps {
   isOpen: boolean;
@@ -60,10 +61,8 @@ export const MobileNavigation: React.FC<MobileNavigationProps> = ({ isOpen, onCl
       {/* Drawer */}
       <div className="relative flex flex-col w-72 max-w-full bg-white dark:bg-slate-900 h-full shadow-2xl z-10 font-sans">
         <div className="flex items-center justify-between p-4 border-b border-slate-200 dark:border-slate-800">
-          <div className="flex items-center space-x-2">
-            <div className="w-8 h-8 rounded-xl bg-blue-600 flex items-center justify-center text-white font-bold text-xs">
-              LL
-            </div>
+          <div className="flex items-center space-x-2.5">
+            <LeakLensLogo className="w-8 h-8" />
             <span className="font-bold text-sm text-slate-900 dark:text-slate-100">LeakLens</span>
           </div>
           <button

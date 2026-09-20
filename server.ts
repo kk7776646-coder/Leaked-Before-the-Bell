@@ -1,8 +1,10 @@
 import express from 'express';
 import path from 'path';
 import cors from 'cors';
+import cookieParser from 'cookie-parser';
 import { createServer as createViteServer } from 'vite';
 import { apiRouter } from './server/routes';
+import { authRouter, extractAuth } from './server/authRoutes';
 import { initStorage } from './server/storage';
 
 async function startServer() {
@@ -13,11 +15,14 @@ async function startServer() {
   const PORT = 3000;
 
   // Middlewares
-  app.use(cors());
+  app.use(cors({ origin: true, credentials: true }));
+  app.use(cookieParser());
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
+  app.use(extractAuth);
 
   // API Routes FIRST
+  app.use('/api/auth', authRouter);
   app.use('/api', apiRouter);
 
   // Health check

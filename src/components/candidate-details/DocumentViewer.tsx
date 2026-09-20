@@ -1,20 +1,15 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card } from '../common/Card';
 import { Button } from '../common/Button';
 import { CandidateRecord, api } from '../../services/api';
+import { DocumentViewer as MasterDocumentViewer } from '../document-viewer/DocumentViewer';
 import {
   FileText,
   Image as ImageIcon,
   Download,
-  Maximize2,
-  Minimize2,
-  ZoomIn,
-  ZoomOut,
-  RotateCw,
   AlertCircle,
   FileCheck,
   FileSearch,
-  Code2,
   CheckCircle2,
   Layers,
   Sparkles,
@@ -22,19 +17,29 @@ import {
   Cpu,
   Eye,
   Info,
+  ExternalLink,
+  Target,
 } from 'lucide-react';
 
-interface DocumentViewerProps {
+export interface CandidateDocumentViewerProps {
   candidate: CandidateRecord;
+  targetPage?: number;
+  onPageChange?: (page: number) => void;
 }
 
-export const DocumentViewer: React.FC<DocumentViewerProps> = ({ candidate }) => {
-  const [zoom, setZoom] = useState(100);
-  const [rotation, setRotation] = useState(0);
-  const [isFullscreen, setIsFullscreen] = useState(false);
+export const DocumentViewer: React.FC<CandidateDocumentViewerProps> = ({
+  candidate,
+  targetPage,
+  onPageChange,
+}) => {
   const [activeTab, setActiveTab] = useState<'preview' | 'ocr' | 'pages' | 'metadata'>('preview');
-  const [selectedPageNum, setSelectedPageNum] = useState<number>(1);
-  const [loadError, setLoadError] = useState(false);
+  const [selectedPageNum, setSelectedPageNum] = useState<number>(targetPage || 1);
+
+  useEffect(() => {
+    if (targetPage && targetPage !== selectedPageNum) {
+      setSelectedPageNum(targetPage);
+    }
+  }, [targetPage]);
 
   const documentUrl = api.getCandidateDocumentUrl(candidate.id);
   const isPdf = candidate.mimeType === 'application/pdf' || candidate.name.toLowerCase().endsWith('.pdf');
@@ -46,6 +51,11 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({ candidate }) => 
   const totalPages = candidate.pagesCount || candidate.extractionSummary?.totalPages || (pages.length > 0 ? pages.length : 1);
   const uncertainty = candidate.uncertaintyReason;
 
+  const handlePageChange = (pageNum: number) => {
+    setSelectedPageNum(pageNum);
+    onPageChange?.(pageNum);
+  };
+
   const handleDownload = () => {
     const link = document.createElement('a');
     link.href = documentUrl;
@@ -55,19 +65,15 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({ candidate }) => 
     document.body.removeChild(link);
   };
 
-  const handleZoomIn = () => setZoom((prev) => Math.min(prev + 25, 250));
-  const handleZoomOut = () => setZoom((prev) => Math.max(prev - 25, 50));
-  const handleRotate = () => setRotation((prev) => (prev + 90) % 360);
-
   return (
     <Card
       title={
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-2">
             {isPdf ? (
-              <FileText className="w-4 h-4 text-rose-500" />
+              <FileText className="w-4 h-4 text-rose-500 shrink-0" />
             ) : (
-              <ImageIcon className="w-4 h-4 text-blue-500" />
+              <ImageIcon className="w-4 h-4 text-blue-500 shrink-0" />
             )}
             <span className="font-semibold text-slate-800 dark:text-slate-200 text-sm truncate max-w-xs">
               {candidate.name}
@@ -78,9 +84,9 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({ candidate }) => 
             <div className="flex bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg text-xs font-medium">
               <button
                 onClick={() => setActiveTab('preview')}
-                className={`px-2.5 py-1 rounded-md transition-colors ${
+                className={`px-2.5 py-1 rounded-md transition-colors cursor-pointer ${
                   activeTab === 'preview'
-                    ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-xs'
+                    ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-xs font-semibold'
                     : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
                 }`}
               >
@@ -89,9 +95,9 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({ candidate }) => 
               {pages.length > 0 && (
                 <button
                   onClick={() => setActiveTab('pages')}
-                  className={`px-2.5 py-1 rounded-md transition-colors ${
+                  className={`px-2.5 py-1 rounded-md transition-colors cursor-pointer ${
                     activeTab === 'pages'
-                      ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-xs'
+                      ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-xs font-semibold'
                       : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
                   }`}
                 >
@@ -100,19 +106,19 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({ candidate }) => 
               )}
               <button
                 onClick={() => setActiveTab('ocr')}
-                className={`px-2.5 py-1 rounded-md transition-colors ${
+                className={`px-2.5 py-1 rounded-md transition-colors cursor-pointer ${
                   activeTab === 'ocr'
-                    ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-xs'
+                    ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-xs font-semibold'
                     : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
                 }`}
               >
-                Extracted Text
+                OCR Extracted Text
               </button>
               <button
                 onClick={() => setActiveTab('metadata')}
-                className={`px-2.5 py-1 rounded-md transition-colors ${
+                className={`px-2.5 py-1 rounded-md transition-colors cursor-pointer ${
                   activeTab === 'metadata'
-                    ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-xs'
+                    ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-xs font-semibold'
                     : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
                 }`}
               >
@@ -134,7 +140,7 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({ candidate }) => 
     >
       {/* 🌟 EXTRACTION TELEMETRY STRIP 🌟 */}
       <div className="mb-3.5 p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2.5 text-xs">
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <span className="flex items-center gap-1.5 font-medium text-slate-700 dark:text-slate-300">
             <Cpu className="w-3.5 h-3.5 text-blue-500" />
             Method:
@@ -210,83 +216,27 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({ candidate }) => 
         </div>
       )}
 
-      {/* TAB 1: ORIGINAL DOCUMENT (ALWAYS PRESERVED) */}
+      {/* TAB 1: ORIGINAL VISUAL DOCUMENT (THE REAL FILE) */}
       {activeTab === 'preview' && (
         <div className="space-y-3">
-          {isImage && (
-            <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-800/60 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 text-xs">
-              <div className="flex items-center gap-1.5">
-                <Button variant="ghost" size="sm" onClick={handleZoomOut} icon={<ZoomOut className="w-3.5 h-3.5" />} />
-                <span className="font-mono text-slate-600 dark:text-slate-300 w-12 text-center">{zoom}%</span>
-                <Button variant="ghost" size="sm" onClick={handleZoomIn} icon={<ZoomIn className="w-3.5 h-3.5" />} />
-                <Button variant="ghost" size="sm" onClick={handleRotate} icon={<RotateCw className="w-3.5 h-3.5" />} />
-              </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setIsFullscreen(!isFullscreen)}
-                icon={isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
-              />
-            </div>
-          )}
+          <MasterDocumentViewer
+            documentId={candidate.id}
+            url={documentUrl}
+            filename={candidate.name}
+            mimeType={candidate.mimeType}
+            fileSize={candidate.size}
+            pageCount={totalPages}
+            pages={pages}
+            currentPage={selectedPageNum}
+            onPageChange={handlePageChange}
+            onDownload={handleDownload}
+            showMetadataBar={false}
+            height="620px"
+          />
 
-          {/* Document Viewer Frame */}
-          <div
-            className={`w-full bg-slate-900/5 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden flex items-center justify-center min-h-[420px] max-h-[620px] relative ${
-              isFullscreen ? 'fixed inset-4 z-50 bg-black/95 max-h-none' : ''
-            }`}
-          >
-            {loadError ? (
-              <div className="text-center p-8 space-y-2">
-                <AlertCircle className="w-8 h-8 text-amber-500 mx-auto" />
-                <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-                  Document preview unavailable
-                </p>
-                <p className="text-xs text-slate-500">
-                  The original document file could not be rendered directly in the browser iframe.
-                </p>
-                <Button variant="outline" size="sm" onClick={handleDownload} icon={<Download className="w-3.5 h-3.5" />}>
-                  Download Document
-                </Button>
-              </div>
-            ) : isPdf ? (
-              <iframe
-                src={`${documentUrl}#toolbar=1&navpanes=0`}
-                title={candidate.name}
-                className="w-full h-[520px] border-0"
-                onError={() => setLoadError(true)}
-              />
-            ) : isImage ? (
-              <div className="overflow-auto w-full h-[520px] flex items-center justify-center p-4">
-                <img
-                  src={documentUrl}
-                  alt={candidate.name}
-                  onError={() => setLoadError(true)}
-                  style={{
-                    transform: `scale(${zoom / 100}) rotate(${rotation}deg)`,
-                    transition: 'transform 0.2s ease',
-                  }}
-                  className="max-h-full max-w-full object-contain shadow-lg rounded-lg"
-                />
-              </div>
-            ) : (
-              <div className="text-center p-8 space-y-3">
-                <FileText className="w-12 h-12 text-slate-400 mx-auto" />
-                <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-                  {candidate.name}
-                </p>
-                <p className="text-xs text-slate-500">
-                  Binary document file. Click download to inspect the raw file on your machine.
-                </p>
-                <Button variant="primary" size="sm" onClick={handleDownload} icon={<Download className="w-3.5 h-3.5" />}>
-                  Download {candidate.name}
-                </Button>
-              </div>
-            )}
-          </div>
-          <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1">
-            <span>Viewing exact uploaded original binary (unaltered original layout).</span>
-            <span>Security Hash: <span className="font-mono">{candidate.sha256.substring(0, 16)}...</span></span>
+          <div className="flex flex-wrap items-center justify-between text-[11px] text-slate-500 pt-1">
+            <span>Viewing exact uploaded original binary (unaltered visual evidence).</span>
+            <span>Security Hash: <span className="font-mono text-slate-700 dark:text-slate-300">{candidate.sha256.substring(0, 16)}...</span></span>
           </div>
         </div>
       )}
@@ -306,8 +256,8 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({ candidate }) => 
                   return (
                     <button
                       key={p.pageNumber}
-                      onClick={() => setSelectedPageNum(p.pageNumber)}
-                      className={`w-full text-left p-2.5 rounded-xl border transition-all text-xs ${
+                      onClick={() => handlePageChange(p.pageNumber)}
+                      className={`w-full text-left p-2.5 rounded-xl border transition-all text-xs cursor-pointer ${
                         isSelected
                           ? 'border-blue-500 bg-blue-50/50 dark:bg-blue-900/20 shadow-xs'
                           : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-slate-300'
@@ -357,9 +307,17 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({ candidate }) => 
                         Page {curPage.pageNumber} Analysis Details
                       </h4>
                       <div className="flex items-center gap-2">
-                        <span className="text-[11px] text-slate-500">
-                          Confidence: <strong className="font-mono text-slate-800 dark:text-slate-200">{curPage.ocrConfidence}%</strong>
-                        </span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          icon={<Target className="w-3.5 h-3.5 text-blue-500" />}
+                          onClick={() => {
+                            handlePageChange(curPage.pageNumber);
+                            setActiveTab('preview');
+                          }}
+                        >
+                          View in Document Viewer
+                        </Button>
                       </div>
                     </div>
 
@@ -384,27 +342,6 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({ candidate }) => 
                       </div>
                     </div>
 
-                    {/* Rendered Page Image if Scanned OCR was used */}
-                    {curPage.renderedImagePath && (
-                      <div className="space-y-1.5 pt-2 border-t border-slate-200 dark:border-slate-800">
-                        <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1">
-                          <Eye className="w-3.5 h-3.5 text-blue-500" />
-                          Rendered Page Scan (200 DPI Ghostscript Canvas):
-                        </span>
-                        <div className="w-full h-64 bg-slate-900 rounded-lg overflow-hidden flex items-center justify-center border border-slate-700">
-                          <img
-                            src={api.getDetectedPageImageUrl(candidate.id, curPage.pageNumber)}
-                            alt={`Page ${curPage.pageNumber} render`}
-                            className="max-h-full max-w-full object-contain"
-                            onError={(e) => {
-                              // If image fails, fallback to general document url
-                              (e.target as HTMLImageElement).src = documentUrl;
-                            }}
-                          />
-                        </div>
-                      </div>
-                    )}
-
                     {/* Page Extracted Text */}
                     <div className="space-y-1.5 pt-2 border-t border-slate-200 dark:border-slate-800">
                       <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1">
@@ -426,12 +363,12 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({ candidate }) => 
       {/* TAB 3: EXTRACTED OCR / NATIVE TEXT */}
       {activeTab === 'ocr' && (
         <div className="space-y-3">
-          <div className="flex items-center justify-between text-xs text-slate-500 pb-1 border-b border-slate-100 dark:border-slate-800">
-            <span className="flex items-center gap-1.5 font-medium">
+          <div className="flex flex-wrap items-center justify-between text-xs text-slate-500 pb-1 border-b border-slate-100 dark:border-slate-800 gap-2">
+            <span className="flex items-center gap-1.5 font-medium text-slate-700 dark:text-slate-300">
               <FileSearch className="w-3.5 h-3.5 text-blue-500" />
-              Complete Extracted Text Output ({candidate.questions?.length || 0} parsed question blocks)
+              OCR / Machine Extracted Text ({candidate.questions?.length || 0} question blocks)
             </span>
-            <span className="font-mono">Engine: Page-by-Page Hybrid Pipeline (pdf-lib + Tesseract.js OCR)</span>
+            <span className="font-mono text-[11px]">Engine: Page-by-Page Hybrid Pipeline (pdf-lib + Tesseract.js OCR)</span>
           </div>
 
           <div className="bg-slate-50 dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 max-h-[460px] overflow-y-auto">

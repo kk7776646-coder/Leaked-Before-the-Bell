@@ -1,0 +1,138 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" fill="none">
+  <!-- Orbiting Dynamic Swoosh -->
+  <path
+    d="M 120 180 C 80 230 40 310 90 380 C 140 450 250 470 340 430 C 400 400 440 350 455 300 C 440 325 395 375 330 395 C 230 425 140 390 105 330 C 75 275 105 215 120 180 Z"
+    fill="currentColor"
+  />
+  <path
+    d="M 380 320 C 420 270 460 190 410 120 C 360 50 250 30 160 70 C 100 100 60 150 45 200 C 60 175 105 125 170 105 C 270 75 360 110 395 170 C 425 225 395 285 380 320 Z"
+    fill="currentColor"
+  />
+
+  <!-- Document Sheet -->
+  <!-- Document Border / Body -->
+  <path
+    d="M 140 85 C 140 70 152 58 168 58 L 290 58 L 348 116 L 348 372 C 348 388 336 400 320 400 L 168 400 C 152 400 140 388 140 372 Z"
+    fill="white"
+    stroke="currentColor"
+    stroke-width="18"
+    stroke-linejoin="round"
+  />
+
+  <!-- Top Right Dog-ear Fold -->
+  <path
+    d="M 290 58 L 290 116 L 348 116 Z"
+    fill="currentColor"
+  />
+
+  <!-- Document Text Indicator Lines -->
+  <rect x="175" y="105" width="95" height="14" rx="7" fill="currentColor" />
+  <rect x="175" y="132" width="130" height="14" rx="7" fill="currentColor" />
+  <rect x="175" y="159" width="110" height="14" rx="7" fill="currentColor" />
+
+  <!-- Viewfinder / Scanner Target Brackets -->
+  <!-- Top Left Bracket -->
+  <path
+    d="M 180 230 L 180 200 C 180 195 185 190 190 190 L 220 190"
+    stroke="currentColor"
+    stroke-width="14"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    fill="none"
+  />
+  <!-- Top Right Bracket -->
+  <path
+    d="M 300 190 L 330 190 C 335 190 340 195 340 200 L 340 230"
+    stroke="currentColor"
+    stroke-width="14"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    fill="none"
+  />
+  <!-- Bottom Left Bracket -->
+  <path
+    d="M 180 340 L 180 370 C 180 375 185 380 190 380 L 220 380"
+    stroke="currentColor"
+    stroke-width="14"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    fill="none"
+  />
+  <!-- Bottom Right Bracket -->
+  <path
+    d="M 300 380 L 330 380 C 335 380 340 375 340 370 L 340 340"
+    stroke="currentColor"
+    stroke-width="14"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    fill="none"
+  />
+
+  <!-- Alert Bell -->
+  <!-- Bell Top Handle -->
+  <circle cx="258" cy="225" r="16" fill="currentColor" />
+  <!-- Bell Body -->
+  <path
+    d="M 258 228 C 235 235 220 255 210 290 C 200 320 190 335 182 342 C 180 344 182 347 186 347 L 330 347 C 334 347 336 344 334 342 C 326 335 316 320 306 290 C 296 255 281 235 258 228 Z"
+    fill="currentColor"
+  />
+  <!-- Bell Clapper -->
+  <ellipse cx="258" cy="360" rx="18" ry="12" fill="currentColor" />
+
+  <!-- Radiating Alert Sound / Light Rays -->
+  <path
+    d="M 315 255 L 335 245"
+    stroke="currentColor"
+    stroke-width="9"
+    stroke-linecap="round"
+  />
+  <path
+    d="M 325 280 L 350 280"
+    stroke="currentColor"
+    stroke-width="9"
+    stroke-linecap="round"
+  />
+  <path
+    d="M 315 305 L 338 315"
+    stroke="currentColor"
+    stroke-width="9"
+    stroke-linecap="round"
+  />
+
+  <!-- Circuit Traces Connecting from Document to Network -->
+  <!-- Trace 1 (Top) -->
+  <path
+    d="M 345 280 L 375 280 L 405 250 L 450 250"
+    stroke="currentColor"
+    stroke-width="12"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    fill="none"
+  />
+  <circle cx="460" cy="250" r="14" fill="currentColor" />
+  <circle cx="460" cy="250" r="6" fill="white" />
+
+  <!-- Trace 2 (Middle) -->
+  <path
+    d="M 345 320 L 385 320 L 415 290 L 435 290"
+    stroke="currentColor"
+    stroke-width="12"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    fill="none"
+  />
+  <circle cx="445" cy="290" r="14" fill="currentColor" />
+  <circle cx="445" cy="290" r="6" fill="white" />
+
+  <!-- Trace 3 (Bottom) -->
+  <path
+    d="M 345 355 L 375 355 L 405 340 L 425 340"
+    stroke="currentColor"
+    stroke-width="12"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    fill="none"
+  />
+  <circle cx="435" cy="340" r="14" fill="currentColor" />
+  <circle cx="435" cy="340" r="6" fill="white" />
+</svg>

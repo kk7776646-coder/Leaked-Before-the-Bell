@@ -25,37 +25,38 @@ import {
 
 interface SubjectIconProps {
   subject?: string;
+  code?: string;
   size?: number;
   className?: string;
 }
 
-export const SubjectIcon: React.FC<SubjectIconProps> = ({ subject = '', size = 16, className = '' }) => {
-  const normalize = (name: string): string => {
-    if (!name) return 'other';
-    const lower = name.toLowerCase().trim();
-    if (lower.includes('math') || lower.includes('calculus') || lower.includes('algebra')) return 'math';
-    if (lower.includes('chem')) return 'chem';
-    if (lower.includes('bio')) return 'bio';
-    if (lower.includes('phys')) return 'physics';
-    if (lower.includes('computer') || lower.includes('cse') || lower.includes('coding') || lower.includes('cs')) return 'cs';
-    if (lower.includes('engineer')) return 'engineering';
-    if (lower.includes('medic') || lower.includes('health')) return 'medicine';
-    if (lower.includes('social') || lower.includes('sociology')) return 'social';
-    if (lower.includes('history')) return 'history';
-    if (lower.includes('geograph')) return 'geography';
-    if (lower.includes('econ')) return 'economics';
-    if (lower.includes('psychol')) return 'psychology';
-    if (lower.includes('law') || lower.includes('legal')) return 'law';
-    if (lower.includes('business') || lower.includes('management')) return 'business';
-    if (lower.includes('account') || lower.includes('finance')) return 'accounting';
-    if (lower.includes('stat')) return 'statistics';
-    if (lower.includes('environment') || lower.includes('evs')) return 'environment';
-    if (lower.includes('english') || lower.includes('language')) return 'english';
-    if (lower.includes('lit')) return 'literature';
+export const SubjectIcon: React.FC<SubjectIconProps> = ({ subject = '', code = '', size = 16, className = '' }) => {
+  const normalize = (name: string, codeStr: string): string => {
+    const combined = `${name} ${codeStr}`.toLowerCase().trim();
+    if (!combined) return 'other';
+    if (combined.includes('math') || combined.includes('calculus') || combined.includes('algebra')) return 'math';
+    if (combined.includes('chem')) return 'chem';
+    if (combined.includes('bio')) return 'bio';
+    if (combined.includes('phys')) return 'physics';
+    if (combined.includes('computer') || combined.includes('cse') || combined.includes('coding') || combined.includes('cs')) return 'cs';
+    if (combined.includes('engineer')) return 'engineering';
+    if (combined.includes('medic') || combined.includes('health')) return 'medicine';
+    if (combined.includes('social') || combined.includes('sociology')) return 'social';
+    if (combined.includes('history')) return 'history';
+    if (combined.includes('geograph')) return 'geography';
+    if (combined.includes('econ')) return 'economics';
+    if (combined.includes('psychol')) return 'psychology';
+    if (combined.includes('law') || combined.includes('legal')) return 'law';
+    if (combined.includes('business') || combined.includes('management')) return 'business';
+    if (combined.includes('account') || combined.includes('finance')) return 'accounting';
+    if (combined.includes('stat')) return 'statistics';
+    if (combined.includes('environment') || combined.includes('evs')) return 'environment';
+    if (combined.includes('english') || combined.includes('language')) return 'english';
+    if (combined.includes('lit')) return 'literature';
     return 'other';
   };
 
-  const key = normalize(subject);
+  const key = normalize(subject, code);
 
   const iconMap: Record<string, LucideIcon> = {
     math: Calculator,

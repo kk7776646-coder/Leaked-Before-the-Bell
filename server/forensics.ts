@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { PDFParse } from 'pdf-parse';
 import {
   ExtractedQuestion,
   QuestionForensicResult,
@@ -10,20 +11,21 @@ import {
 } from './types';
 import { normalizeOcrText } from './documentExtraction';
 
-// PDF text parser wrapper using pdf-parse or fallback
+// PDF text parser wrapper using PDFParse or fallback
 export async function extractTextFromFile(filePath: string, mimeType: string): Promise<string> {
   const ext = path.extname(filePath).toLowerCase();
 
   if (ext === '.pdf' || mimeType === 'application/pdf') {
     try {
       const dataBuffer = fs.readFileSync(filePath);
-      const pdfParse = require('pdf-parse');
-      const pdfData = await pdfParse(dataBuffer);
-      if (pdfData && pdfData.text && pdfData.text.trim().length > 0) {
-        return pdfData.text.trim();
+      const parser = new PDFParse({ data: dataBuffer });
+      const textResult = await parser.getText();
+      await parser.destroy().catch(() => {});
+      if (textResult && textResult.text && textResult.text.trim().length > 0) {
+        return textResult.text.trim();
       }
     } catch (err) {
-      console.warn('pdf-parse fallback check:', err);
+      console.warn('PDFParse extraction check:', err);
     }
 
     try {

@@ -3,6 +3,7 @@ import path from 'path';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import { PDFDocument } from 'pdf-lib';
+import { PDFParse } from 'pdf-parse';
 import { createWorker } from 'tesseract.js';
 import { DIRS } from './storage';
 import {
@@ -156,53 +157,40 @@ export async function performOcrOnImage(imagePath: string): Promise<{
   }
 }
 
-// Extract native text per page from PDF using pdf-parse or buffer extraction
+// Extract native text per page from PDF using PDFParse or buffer extraction
 async function extractNativePdfPageTexts(pdfBuffer: Buffer, totalPages: number): Promise<string[]> {
   const pageTexts: string[] = [];
 
   try {
-    const pdfParse = require('pdf-parse');
-    let currentPageIndex = 0;
-    const tempPages: string[] = [];
+    const parser = new PDFParse({ data: pdfBuffer });
+    const textResult = await parser.getText();
+    await parser.destroy().catch(() => {});
 
-    const options = {
-      pagerender: (pageData: any) => {
-        return pageData.getTextContent().then((textContent: any) => {
-          let lastY: any = null;
-          let text = '';
-          for (const item of textContent.items) {
-            if (lastY === item.transform[5] || lastY === null) {
-              text += item.str;
-            } else {
-              text += '\n' + item.str;
-            }
-            lastY = item.transform[5];
-          }
-          tempPages.push(text.trim());
-          return text;
-        });
-      },
-    };
-
-    await pdfParse(pdfBuffer, options);
-    if (tempPages.length > 0) {
-      return tempPages;
+    if (textResult && Array.isArray(textResult.pages) && textResult.pages.length > 0) {
+      const sortedPages = [...textResult.pages].sort((a, b) => a.num - b.num);
+      return sortedPages.map((p) => p.text ? p.text.trim() : '');
     }
-  } catch (err) {
-    console.warn('pdf-parse page-level extraction fallback:', err);
-  }
 
-  // Fallback: whole buffer extraction
-  try {
-    const pdfParse = require('pdf-parse');
-    const fullData = await pdfParse(pdfBuffer);
-    const fullText = fullData.text ? fullData.text.trim() : '';
-    if (fullText) {
-      const splitByFormFeed = fullText.split(/\f/);
+    if (textResult && textResult.text && textResult.text.trim()) {
+      const splitByFormFeed = textResult.text.split(/\f/);
       if (splitByFormFeed.length >= totalPages) {
         return splitByFormFeed.map((t) => t.trim());
       }
-      return [fullText];
+      return [textResult.text.trim()];
+    }
+  } catch (err) {
+    console.warn('PDFParse page-level extraction fallback:', err);
+  }
+
+  // Fallback: raw buffer string search if parser encounters issue
+  try {
+    const text = pdfBuffer.toString('utf-8');
+    const textMatches = text.match(/\(([^)]+)\)\s*Tj/g);
+    if (textMatches && textMatches.length > 0) {
+      const extracted = textMatches.map((m: string) => m.replace(/[()]/g, '').replace(/\s*Tj$/, '')).join(' ');
+      if (extracted.trim()) {
+        return [extracted.trim()];
+      }
     }
   } catch (e) {
     // ignore

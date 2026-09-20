@@ -5,8 +5,12 @@ import fs from 'fs';
 import { db } from './db';
 import {
   DIRS,
+  STORAGE_ROOT,
   computeSha256,
   validateFileType,
+  validateUploadedFileBuffer,
+  saveUploadedFile,
+  detectFileTypeFromBuffer,
   sanitizeFilename,
   isSafePath,
 } from './storage';
@@ -20,7 +24,30 @@ import {
   renderPdfPageToImage,
   performOcrOnImage,
 } from './documentExtraction';
-import { CandidateRecord, HistoricalPaperRecord, RealPaperRecord } from './types';
+import { extractZipArchiveRecursively } from './recursiveZipExtractor';
+import { extractMetadataFromContent } from './metadataExtractor';
+import { generateTrialExaminationPaper } from './trialPaperGenerator';
+import {
+  generateTrialHistoricalPaperFixture,
+  generateFakeSuspiciousPaperFixture,
+  generateFakeNormalPaperFixture,
+  generateTestDatasetFixture,
+} from './testDataGenerator';
+import { documentIngestionEngine } from './documentIngestionEngine';
+import { runAllIngestionTests } from './ingestionTestSuite';
+import { runAllUploadTests } from './uploadTestSuite';
+import { AiAssistantRegistry } from './aiAssistantRegistry';
+import { AiAssistantService } from './aiAssistantService';
+import { runAllAiAssistantTests } from './aiAssistantTestSuite';
+import {
+  CandidateRecord,
+  HistoricalPaperRecord,
+  RealPaperRecord,
+  IngestionHierarchyResult,
+  UploadRecord,
+  UploadResponseItem,
+  BatchUploadResponse,
+} from './types';
 
 export const apiRouter = express.Router();
 
@@ -34,7 +61,7 @@ const uploadCandidates = multer({
       cb(null, `candidate-${uniqueSuffix}${ext}`);
     },
   }),
-  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB
+  limits: { fileSize: 100 * 1024 * 1024 }, // 100MB
 });
 
 const uploadHistorical = multer({
@@ -61,14 +88,346 @@ const uploadRealPapers = multer({
   limits: { fileSize: 50 * 1024 * 1024 },
 });
 
+// Memory storage for fast SHA-256 byte validation and pristine binary saving
+const uploadMemory = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 150 * 1024 * 1024 }, // 150MB per file
+});
+
+// ==========================================
+// 0. UPLOADS CORE API (RELIABLE MULTIPART UPLOAD)
+// ==========================================
+
+// Upload 1 file, multiple files, or ZIP archive (multipart/form-data)
+apiRouter.post(
+  '/uploads',
+  uploadMemory.any(),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const files = (req.files as Express.Multer.File[]) || (req.file ? [req.file] : []);
+
+      if (!files || files.length === 0) {
+        res.status(400).json({
+          error: 'No files provided in upload request. Please select one or more PDF, image, or ZIP files.',
+          status: 'UPLOAD_FAILED',
+        });
+        return;
+      }
+
+      const results: UploadResponseItem[] = [];
+
+      for (const file of files) {
+        const originalName = file.originalname || 'document.bin';
+        const buffer = file.buffer;
+
+        // 1. Validate file signature, extension, and content size
+        const validation = validateUploadedFileBuffer(buffer, originalName, file.mimetype);
+        const sha256 = computeSha256(buffer);
+
+        if (!validation.valid) {
+          results.push({
+            upload_id: `FAIL-${Date.now()}-${Math.round(Math.random() * 1000)}`,
+            filename: originalName,
+            original_filename: originalName,
+            content_type: file.mimetype || 'application/octet-stream',
+            size: buffer ? buffer.length : 0,
+            sha256: sha256 || 'N/A',
+            uploaded_at: new Date().toISOString(),
+            status: 'UPLOAD_FAILED',
+            error: validation.error || 'Validation failed for file.',
+          });
+          continue;
+        }
+
+        // 2. Check for exact duplicate bytes via SHA-256
+        const existingDuplicate = db.findUploadBySha256(sha256);
+        if (existingDuplicate) {
+          results.push({
+            upload_id: existingDuplicate.upload_id,
+            filename: existingDuplicate.filename,
+            original_filename: originalName,
+            content_type: existingDuplicate.content_type,
+            size: existingDuplicate.size,
+            sha256: existingDuplicate.sha256,
+            uploaded_at: existingDuplicate.uploaded_at,
+            status: 'DUPLICATE',
+            is_duplicate: true,
+            duplicate_of: existingDuplicate.upload_id,
+            processing_status: existingDuplicate.processing_status,
+          });
+          continue;
+        }
+
+        // 3. Generate internal storage ID & save original binary bytes
+        const uploadId = db.getNextUploadId();
+        const saved = saveUploadedFile(uploadId, originalName, buffer);
+
+        const record: UploadRecord = {
+          upload_id: uploadId,
+          filename: path.basename(saved.storagePath),
+          original_filename: originalName,
+          content_type: validation.canonicalMimeType || file.mimetype || 'application/octet-stream',
+          size: saved.size,
+          sha256: saved.sha256,
+          storage_path: saved.storagePath,
+          uploaded_at: new Date().toISOString(),
+          status: 'UPLOADED',
+          processing_status: 'PENDING',
+          metadata: {
+            platform: (req.body && req.body.platform) || 'Upload',
+            source: (req.body && req.body.source) || undefined,
+            detectedType: validation.detectedType,
+          },
+        };
+
+        db.addUpload(record);
+
+        results.push({
+          upload_id: record.upload_id,
+          filename: record.original_filename,
+          original_filename: record.original_filename,
+          content_type: record.content_type,
+          size: record.size,
+          sha256: record.sha256,
+          uploaded_at: record.uploaded_at,
+          status: record.status,
+          processing_status: record.processing_status,
+        });
+      }
+
+      const total = results.length;
+      const successful = results.filter((r) => r.status === 'UPLOADED' || r.status === 'DUPLICATE').length;
+      const failed = results.filter((r) => r.status === 'UPLOAD_FAILED').length;
+
+      const firstItem = results[0];
+
+      res.status(200).json({
+        success: successful > 0,
+        // Single file convenience properties
+        upload_id: firstItem ? firstItem.upload_id : undefined,
+        filename: firstItem ? firstItem.filename : undefined,
+        original_filename: firstItem ? firstItem.original_filename : undefined,
+        content_type: firstItem ? firstItem.content_type : undefined,
+        size: firstItem ? firstItem.size : undefined,
+        sha256: firstItem ? firstItem.sha256 : undefined,
+        uploaded_at: firstItem ? firstItem.uploaded_at : undefined,
+        status: firstItem ? firstItem.status : 'UPLOAD_FAILED',
+        error: firstItem && firstItem.error ? firstItem.error : undefined,
+        // Batch properties
+        uploads: results,
+        total,
+        successful,
+        failed,
+      });
+    } catch (err: any) {
+      console.error('Upload processing error:', err);
+      res.status(500).json({
+        error: err.message || 'Internal server error during upload.',
+        status: 'UPLOAD_FAILED',
+      });
+    }
+  }
+);
+
+// List all uploaded files
+apiRouter.get('/uploads', (req: Request, res: Response): void => {
+  try {
+    const uploads = db.getUploads();
+    res.status(200).json(uploads);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Failed to fetch uploads list.' });
+  }
+});
+
+// Get single upload record metadata
+apiRouter.get('/uploads/:id', (req: Request, res: Response): void => {
+  try {
+    const record = db.getUploadById(req.params.id);
+    if (!record) {
+      res.status(404).json({ error: `Upload record '${req.params.id}' not found.` });
+      return;
+    }
+    res.status(200).json(record);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Failed to fetch upload metadata.' });
+  }
+});
+
+// Download/stream raw uploaded binary file
+apiRouter.get('/uploads/:id/file', (req: Request, res: Response): void => {
+  try {
+    const record = db.getUploadById(req.params.id);
+    if (!record) {
+      res.status(404).json({ error: `Upload '${req.params.id}' not found.` });
+      return;
+    }
+
+    const absolutePath = path.resolve(STORAGE_ROOT, record.storage_path);
+    if (!fs.existsSync(absolutePath)) {
+      res.status(404).json({ error: `Binary file for upload '${req.params.id}' does not exist on disk.` });
+      return;
+    }
+
+    res.setHeader('Content-Type', record.content_type || 'application/octet-stream');
+    res.setHeader(
+      'Content-Disposition',
+      `inline; filename="${encodeURIComponent(record.original_filename)}"`
+    );
+    const fileStream = fs.createReadStream(absolutePath);
+    fileStream.pipe(res);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Failed to stream uploaded file.' });
+  }
+});
+
+// Delete upload record & remove from storage
+apiRouter.delete('/uploads/:id', (req: Request, res: Response): void => {
+  try {
+    const record = db.getUploadById(req.params.id);
+    if (!record) {
+      res.status(404).json({ error: `Upload '${req.params.id}' not found.` });
+      return;
+    }
+
+    const absolutePath = path.resolve(STORAGE_ROOT, record.storage_path);
+    if (fs.existsSync(absolutePath)) {
+      try {
+        fs.unlinkSync(absolutePath);
+        // Also remove parent folder if empty
+        const parentDir = path.dirname(absolutePath);
+        if (fs.existsSync(parentDir) && fs.readdirSync(parentDir).length === 0) {
+          fs.rmdirSync(parentDir);
+        }
+      } catch (e) {
+        console.warn('Failed to delete file from disk:', e);
+      }
+    }
+
+    db.deleteUpload(req.params.id);
+    res.status(200).json({ success: true, message: `Upload '${req.params.id}' deleted.` });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Failed to delete upload.' });
+  }
+});
+
+// Automated Upload Test Suite Endpoint
+apiRouter.post('/uploads/test-suite', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const report = await runAllUploadTests();
+    res.status(200).json(report);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Failed to run upload test suite.' });
+  }
+});
+
 // ==========================================
 // 1. CANDIDATES / DETECTED CONTENT API
 // ==========================================
 
-// Upload real document(s)
+// Inspect uploaded document(s) or ZIP archive to auto-extract metadata & detect multi-papers without immediate commit
+apiRouter.post(
+  '/candidates/inspect',
+  uploadCandidates.array('files', 100),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const files = (req.files as Express.Multer.File[]) || (req.file ? [req.file] : []);
+
+      if (!files || files.length === 0) {
+        res.status(400).json({ error: 'No file uploaded. Please select a valid PDF, image, or ZIP archive.' });
+        return;
+      }
+
+      for (const file of files) {
+        const validation = validateFileType(file.originalname, file.mimetype);
+        if (!validation.valid) {
+          files.forEach((f) => fs.existsSync(f.path) && fs.unlinkSync(f.path));
+          res.status(400).json({ error: validation.error });
+          return;
+        }
+      }
+
+      let relativePaths: string[] | undefined = undefined;
+      if (req.body.relative_paths) {
+        try {
+          relativePaths = typeof req.body.relative_paths === 'string'
+            ? JSON.parse(req.body.relative_paths)
+            : req.body.relative_paths;
+        } catch (e) {
+          relativePaths = undefined;
+        }
+      }
+
+      const options = {
+        platform: req.body.platform,
+        source: req.body.source,
+        subjectOverride: req.body.subject,
+        subjectCodeOverride: req.body.subjectCode,
+        notes: req.body.notes,
+        relativePaths,
+      };
+
+      const inspectionResult = await documentIngestionEngine.inspectAndIngest(files, options);
+
+      res.status(200).json({
+        success: true,
+        inspection: inspectionResult,
+        uploadId: inspectionResult.uploadId,
+        archiveId: inspectionResult.archiveId,
+        papersCount: inspectionResult.papers.length,
+        totalPagesCount: inspectionResult.totalPagesCount,
+        papers: inspectionResult.papers,
+      });
+    } catch (err: any) {
+      console.error('Inspection failed:', err);
+      res.status(500).json({ error: err.message || 'Failed to inspect document.' });
+    }
+  }
+);
+
+// Confirm and commit inspected papers into the database
+apiRouter.post('/candidates/confirm-ingest', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { hierarchyResult, platform, source, userPaperOverrides } = req.body;
+
+    if (!hierarchyResult || !hierarchyResult.papers || hierarchyResult.papers.length === 0) {
+      res.status(400).json({ error: 'No inspection result or logical papers provided to commit.' });
+      return;
+    }
+
+    const savedCandidates = await documentIngestionEngine.commitIngestedPapers(hierarchyResult, {
+      platform,
+      source,
+      userPaperOverrides,
+    });
+
+    res.status(201).json({
+      success: true,
+      message: `Successfully ingested ${savedCandidates.length} question paper document(s).`,
+      candidates: savedCandidates,
+      candidate: savedCandidates[0],
+      count: savedCandidates.length,
+    });
+  } catch (err: any) {
+    console.error('Commit failed:', err);
+    res.status(500).json({ error: err.message || 'Failed to commit ingested documents.' });
+  }
+});
+
+// Run automated 27-scenario ingestion test suite
+apiRouter.get('/ingest/test-suite', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const report = await runAllIngestionTests();
+    res.status(200).json(report);
+  } catch (err: any) {
+    console.error('Test suite failed:', err);
+    res.status(500).json({ error: err.message || 'Failed to execute test suite.' });
+  }
+});
+
+// Direct upload and ingest (all-in-one)
 apiRouter.post(
   '/candidates/upload',
-  uploadCandidates.array('files', 10),
+  uploadCandidates.array('files', 100),
   async (req: Request, res: Response): Promise<void> => {
     try {
       const files = (req.files as Express.Multer.File[]) || (req.file ? [req.file] : []);
@@ -78,193 +437,70 @@ apiRouter.post(
         return;
       }
 
-      const primaryFile = files[0];
-      const validation = validateFileType(primaryFile.originalname, primaryFile.mimetype);
-      if (!validation.valid) {
-        // Clean uploaded file from disk
-        files.forEach((f) => fs.existsSync(f.path) && fs.unlinkSync(f.path));
-        res.status(400).json({ error: validation.error });
-        return;
+      for (const file of files) {
+        const validation = validateFileType(file.originalname, file.mimetype);
+        if (!validation.valid) {
+          files.forEach((f) => fs.existsSync(f.path) && fs.unlinkSync(f.path));
+          res.status(400).json({ error: validation.error });
+          return;
+        }
       }
 
-      const fileBuffer = fs.readFileSync(primaryFile.path);
-      if (fileBuffer.length === 0) {
-        files.forEach((f) => fs.existsSync(f.path) && fs.unlinkSync(f.path));
-        res.status(400).json({ error: 'The uploaded file is empty (0 bytes).' });
-        return;
+      let relativePaths: string[] | undefined = undefined;
+      if (req.body.relative_paths) {
+        try {
+          relativePaths = typeof req.body.relative_paths === 'string'
+            ? JSON.parse(req.body.relative_paths)
+            : req.body.relative_paths;
+        } catch (e) {
+          relativePaths = undefined;
+        }
       }
 
-      const sha256 = computeSha256(fileBuffer);
-
-      // Check duplicate by SHA-256
-      const existingCandidate = db.findCandidateBySha256(sha256);
-      if (existingCandidate) {
-        // Clean duplicate temporary upload
-        files.forEach((f) => fs.existsSync(f.path) && fs.unlinkSync(f.path));
-        res.status(409).json({
-          message: 'Document already exists in the detection database.',
-          id: existingCandidate.id,
-          candidate: existingCandidate,
-          isDuplicate: true,
-        });
-        return;
-      }
-
-      // Generate server ID
-      const candidateId = `DL-${Math.floor(1000 + Math.random() * 9000)}`;
-
-      // Content Type categorization
-      let contentType: CandidateRecord['contentType'] = 'Document';
-      const ext = path.extname(primaryFile.originalname).toLowerCase();
-      if (ext === '.pdf') {
-        contentType = files.length > 1 ? 'Multi-page Image' : 'PDF';
-      } else if (['.png', '.jpg', '.jpeg', '.webp'].includes(ext)) {
-        contentType = files.length > 1 ? 'Multi-page Image' : 'Screenshot';
-      }
-
-      const customSubject = req.body.subject || 'General Examination';
-      const customSubjectCode = req.body.subjectCode || 'GEN-101';
-      const customSource = req.body.source || 'Manual Document Ingestion / Examiner Upload';
-      const customPlatform = req.body.platform || 'Upload';
-
-      // Perform real page-by-page document extraction (Text PDF, Scanned Image PDF, Mixed PDF, or Direct Image)
-      const extraction = await extractDocumentContent(primaryFile.path, primaryFile.mimetype, primaryFile.originalname);
-      const extractedText = extraction.extractedText;
-      const questions = extraction.questions;
-
-      // Run real forensics comparison against verified real papers, historical vault, and exam metadata
-      const verifiedRealPapers = db.getRealPapers({ status: 'VERIFIED' });
-      const historicalPapers = db.getHistoricalPapers();
-      const examMetadataList = db.getExamMetadata({ status: 'ACTIVE' });
-      const forensics = runForensicsComparison(
-        questions,
-        verifiedRealPapers,
-        historicalPapers,
-        examMetadataList,
-        customSubject,
-        customSubjectCode,
-        extractedText,
-        extraction.summary
-      );
-
-      const groupFiles = files.map((f) => {
-        const buf = fs.readFileSync(f.path);
-        return {
-          filename: f.originalname,
-          size: f.size,
-          sha256: computeSha256(buf),
-          storagePath: f.path,
-        };
-      });
-
-      const now = new Date();
-      const candidate: CandidateRecord = {
-        id: candidateId,
-        name: primaryFile.originalname,
-        filename: path.basename(primaryFile.path),
-        contentType,
-        mimeType: primaryFile.mimetype || 'application/octet-stream',
-        size: primaryFile.size,
-        sha256,
-        subject: customSubject,
-        subjectCode: customSubjectCode,
-        platform: customPlatform,
-        source: customSource,
-        risk: forensics.riskLevel,
-        riskScore: forensics.overallRiskScore,
-        confidence: forensics.confidence,
-        processing: extraction.processingStatus === 'Failed' ? 'Failed' : 'Completed',
-        processingError: extraction.processingStatus === 'Failed' ? (extraction.uncertaintyReason || 'Text extraction failed.') : undefined,
-        review: forensics.riskLevel === 'HIGH' ? 'Needs Verification' : forensics.riskLevel === 'REVIEW REQUIRED' ? 'Pending' : 'Reviewed',
-        detectedTime: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        uploadedAt: now.toISOString(),
-        status: 'ACTIVE',
-        storagePath: primaryFile.path,
-        extractedText: extractedText || 'No text content could be extracted from this document.',
-        extractionSummary: extraction.summary,
-        extractionMethod: extraction.overallExtractionMethod,
-        ocrConfidence: extraction.overallOcrConfidence,
-        pagesCount: extraction.summary.totalPages,
-        uncertaintyReason: forensics.uncertaintyReason || extraction.uncertaintyReason,
-        hasAssociatedAlert: forensics.riskLevel === 'HIGH',
-        hasAssociatedReview: forensics.riskLevel !== 'LOW',
-        questions,
-        forensicResults: forensics.forensicResults,
-        metadataComparison: forensics.metadataComparison,
-        matchedReferencePaper: forensics.matchedReference,
-        groupFiles: files.length > 1 ? groupFiles : undefined,
+      const options = {
+        platform: req.body.platform,
+        source: req.body.source,
+        subjectOverride: req.body.subject,
+        subjectCodeOverride: req.body.subjectCode,
+        relativePaths,
       };
 
-      // Save to database
-      db.addCandidate(candidate);
+      // Run full ingestion pipeline
+      const inspection = await documentIngestionEngine.inspectAndIngest(files, options);
 
-      // Generate real Alert if qualified
-      if (candidate.risk === 'HIGH') {
-        const alertId = `AL-${Math.floor(1000 + Math.random() * 9000)}`;
-        candidate.alertId = alertId;
-        const refTitle = forensics.matchedReference?.id || 'verified reference paper';
-        db.addAlert({
-          id: alertId,
-          candidateId: candidate.id,
-          candidateName: candidate.name,
-          subject: candidate.subject,
-          subjectCode: candidate.subjectCode,
-          severity: 'HIGH',
-          title: `HIGH MATCH Detected: ${candidate.name}`,
-          description: `${forensics.overallRiskScore}% question overlap with ${refTitle}. Human verification required.`,
-          similarityScore: forensics.overallRiskScore,
-          status: 'ACTIVE',
-          detectedTime: candidate.detectedTime,
-          timestamp: candidate.uploadedAt,
-          platform: candidate.platform,
-          matchedReferenceId: forensics.matchedReference?.id,
-          matchedReferenceTitle: forensics.matchedReference?.title,
-          evidenceSummary: `${questions.length} extracted question blocks evaluated.`,
-        });
-      }
+      // Commit directly
+      const savedCandidates = await documentIngestionEngine.commitIngestedPapers(inspection, {
+        platform: options.platform,
+        source: options.source,
+      });
 
-      // Generate real Review Item if needed
-      if (candidate.hasAssociatedReview) {
-        const reviewId = `REV-${Math.floor(100 + Math.random() * 900)}`;
-        candidate.reviewId = reviewId;
-        db.addReview({
-          id: reviewId,
-          candidateId: candidate.id,
-          subject: candidate.subject,
-          subjectCode: candidate.subjectCode,
-          riskScore: candidate.riskScore,
-          riskLevel: candidate.risk,
-          evidenceCount: forensics.forensicResults.filter((f) => f.result === 'MATCH' || f.result === 'PARTIAL_MATCH').length,
-          detectedTime: candidate.detectedTime,
-          reviewerStatus: 'Needs Verification',
-          priority: candidate.risk === 'HIGH' ? 'High Priority' : 'Standard Priority',
-        });
-      }
+      const primaryCandidate = savedCandidates[0];
 
-      // Return real upload response
       res.status(201).json({
-        id: candidate.id,
-        filename: candidate.name,
-        content_type: candidate.mimeType,
-        size: candidate.size,
-        sha256: candidate.sha256,
-        processing_status: candidate.processing,
-        risk: candidate.risk,
-        risk_score: candidate.riskScore,
-        confidence: candidate.confidence,
-        questions_count: candidate.questions.length,
-        candidate,
-        detectedContent: candidate,
+        id: primaryCandidate.id,
+        filename: primaryCandidate.name,
+        content_type: primaryCandidate.mimeType,
+        size: primaryCandidate.size,
+        sha256: primaryCandidate.sha256,
+        processing_status: primaryCandidate.processing,
+        risk: primaryCandidate.risk,
+        risk_score: primaryCandidate.riskScore,
+        confidence: primaryCandidate.confidence,
+        questions_count: primaryCandidate.questions.length,
+        candidate: primaryCandidate,
+        candidates: savedCandidates,
+        detectedContent: primaryCandidate,
+        ingestion: inspection,
       });
     } catch (err: any) {
-      console.error('Detected content upload processing failed:', err);
-      res.status(500).json({ error: err.message || 'Internal server error during document processing.' });
+      console.error('Candidate upload failed:', err);
+      res.status(500).json({ error: err.message || 'Failed to process document upload.' });
     }
   }
 );
 
 // Support both /detected-content/upload and /candidates/upload
-apiRouter.post('/detected-content/upload', uploadCandidates.array('files', 10), (req: Request, res: Response, next) => {
+apiRouter.post('/detected-content/upload', uploadCandidates.array('files', 100), (req: Request, res: Response, next) => {
   // Delegate to the same candidate handler
   return (apiRouter as any).handle(req, res, next);
 });
@@ -513,75 +749,278 @@ apiRouter.get('/test-extraction-pipeline', async (req: Request, res: Response): 
 
 apiRouter.post(
   '/historical/upload',
-  uploadHistorical.single('file'),
+  uploadHistorical.any(),
   async (req: Request, res: Response): Promise<void> => {
     try {
-      if (!req.file) {
-        res.status(400).json({ error: 'No file uploaded. Please select a historical paper.' });
+      const files: Express.Multer.File[] = (req.files as Express.Multer.File[]) || (req.file ? [req.file] : []);
+      if (!files || files.length === 0) {
+        res.status(400).json({ error: 'No files uploaded. Please select one or more historical exam papers or archives.' });
         return;
       }
 
-      const file = req.file;
-      const validation = validateFileType(file.originalname, file.mimetype);
-      if (!validation.valid) {
-        if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
-        res.status(400).json({ error: validation.error });
-        return;
+      let relativePathsMap: Record<string, string> = {};
+      if (req.body.relativePaths) {
+        try {
+          const parsed = typeof req.body.relativePaths === 'string' ? JSON.parse(req.body.relativePaths) : req.body.relativePaths;
+          if (Array.isArray(parsed)) {
+            parsed.forEach((p, idx) => {
+              if (files[idx]) relativePathsMap[files[idx].originalname] = p;
+            });
+          } else if (typeof parsed === 'object') {
+            relativePathsMap = parsed;
+          }
+        } catch (e) {}
       }
 
-      const fileBuffer = fs.readFileSync(file.path);
-      const sha256 = computeSha256(fileBuffer);
+      const results: Array<{
+        id: string;
+        title: string;
+        filename: string;
+        relativePath?: string;
+        size: number;
+        sha256?: string;
+        status: 'UPLOADED' | 'DUPLICATE' | 'FAILED';
+        isDuplicate?: boolean;
+        message?: string;
+        error?: string;
+        record?: HistoricalPaperRecord;
+      }> = [];
 
-      const existing = db.findHistoricalBySha256(sha256);
-      if (existing) {
-        if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
-        res.status(409).json({ message: 'Historical paper already exists in vault.', id: existing.id, isDuplicate: true });
-        return;
+      let uploadedCount = 0;
+      let duplicateCount = 0;
+      let failedCount = 0;
+
+      for (const file of files) {
+        const ext = path.extname(file.originalname).toLowerCase();
+        const isZip = ext === '.zip' || file.mimetype.includes('zip');
+        const relativePath = relativePathsMap[file.originalname] || file.originalname;
+
+        if (isZip) {
+          try {
+            const uploadId = `UP-ZIP-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`;
+            const archiveId = `ARC-${Date.now()}`;
+            const zipResult = await extractZipArchiveRecursively(file.path, uploadId, archiveId);
+
+            if (zipResult.documents.length === 0) {
+              results.push({
+                id: `zip-${Date.now()}`,
+                title: file.originalname,
+                filename: file.originalname,
+                relativePath,
+                size: file.size,
+                status: 'FAILED',
+                error: 'No supported PDF or image documents found in ZIP archive.',
+              });
+              failedCount++;
+              continue;
+            }
+
+            for (const doc of zipResult.documents) {
+              try {
+                const docBuffer = fs.readFileSync(doc.storagePath);
+                const sha256 = computeSha256(docBuffer);
+                const existing = db.findHistoricalBySha256(sha256);
+
+                if (existing) {
+                  results.push({
+                    id: existing.id,
+                    title: existing.title,
+                    filename: doc.originalFilename,
+                    relativePath: doc.archiveRelativePath,
+                    size: doc.fileSize,
+                    sha256,
+                    status: 'DUPLICATE',
+                    isDuplicate: true,
+                    message: 'Historical paper already exists in vault.',
+                    record: existing,
+                  });
+                  duplicateCount++;
+                  continue;
+                }
+
+                const extracted = await extractDocumentContent(doc.storagePath, doc.mimeType, doc.originalFilename);
+                const autoMeta = extractMetadataFromContent(extracted.extractedText, doc.originalFilename, extracted.summary);
+
+                const yearVal = (autoMeta.year && autoMeta.year.value !== 'Not detected') ? Number(autoMeta.year.value) : parseInt(req.body.year, 10) || new Date().getFullYear();
+                const id = `HP-${yearVal}-${Math.floor(100 + Math.random() * 900)}`;
+                const subjectVal = (autoMeta.subject && autoMeta.subject.value !== 'Not detected') ? String(autoMeta.subject.value) : (req.body.subject || 'General Examination');
+                const codeVal = (autoMeta.subjectCode && autoMeta.subjectCode.value !== 'Not detected') ? String(autoMeta.subjectCode.value) : (req.body.subjectCode || 'HIST-101');
+                const titleVal = (autoMeta.subject && autoMeta.subject.value !== 'Not detected') ? `${autoMeta.subject.value} (${yearVal})` : doc.originalFilename.replace(/\.[^/.]+$/, '');
+
+                const record: HistoricalPaperRecord = {
+                  id,
+                  title: titleVal,
+                  paperTitle: titleVal,
+                  subject: subjectVal,
+                  subjectCode: codeVal,
+                  year: yearVal,
+                  dateIndexed: new Date().toISOString().substring(0, 10),
+                  totalQuestions: extracted.questions.length > 0 ? extracted.questions.length : 30,
+                  status: 'Vectorized & Active',
+                  fileFormat: doc.isPdf ? 'PDF' : 'IMAGE',
+                  filename: doc.originalFilename,
+                  originalFilename: doc.originalFilename,
+                  storagePath: doc.storagePath,
+                  fileSize: doc.fileSize,
+                  sha256,
+                  vectorEmbeddingsCount: Math.max(80, extracted.questions.length * 4),
+                  ocrSnippet: extracted.extractedText.slice(0, 300) || 'Indexed exam question texts.',
+                  extractedText: extracted.extractedText,
+                  createdAt: new Date().toISOString(),
+                  questions: extracted.questions,
+                };
+
+                db.addHistoricalPaper(record);
+                results.push({
+                  id: record.id,
+                  title: record.title,
+                  filename: record.filename,
+                  relativePath: doc.archiveRelativePath,
+                  size: record.fileSize,
+                  sha256: record.sha256,
+                  status: 'UPLOADED',
+                  record,
+                });
+                uploadedCount++;
+              } catch (docErr: any) {
+                results.push({
+                  id: `err-${Date.now()}`,
+                  title: doc.originalFilename,
+                  filename: doc.originalFilename,
+                  relativePath: doc.archiveRelativePath,
+                  size: doc.fileSize,
+                  status: 'FAILED',
+                  error: docErr.message || 'Failed to extract paper from ZIP.',
+                });
+                failedCount++;
+              }
+            }
+          } catch (zipErr: any) {
+            results.push({
+              id: `err-${Date.now()}`,
+              title: file.originalname,
+              filename: file.originalname,
+              relativePath,
+              size: file.size,
+              status: 'FAILED',
+              error: zipErr.message || 'Failed to process ZIP archive.',
+            });
+            failedCount++;
+          }
+          continue;
+        }
+
+        // Standard PDF / Image file
+        try {
+          const validation = validateFileType(file.originalname, file.mimetype);
+          if (!validation.valid) {
+            if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
+            results.push({
+              id: `err-${Date.now()}`,
+              title: file.originalname,
+              filename: file.originalname,
+              relativePath,
+              size: file.size,
+              status: 'FAILED',
+              error: validation.error,
+            });
+            failedCount++;
+            continue;
+          }
+
+          const fileBuffer = fs.readFileSync(file.path);
+          const sha256 = computeSha256(fileBuffer);
+          const existing = db.findHistoricalBySha256(sha256);
+
+          if (existing) {
+            if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
+            results.push({
+              id: existing.id,
+              title: existing.title,
+              filename: file.originalname,
+              relativePath,
+              size: file.size,
+              sha256,
+              status: 'DUPLICATE',
+              isDuplicate: true,
+              message: 'Historical paper already exists in vault.',
+              record: existing,
+            });
+            duplicateCount++;
+            continue;
+          }
+
+          const extracted = await extractDocumentContent(file.path, file.mimetype, file.originalname);
+          const autoMeta = extractMetadataFromContent(extracted.extractedText, file.originalname, extracted.summary);
+
+          const yearVal = (autoMeta.year && autoMeta.year.value !== 'Not detected') ? Number(autoMeta.year.value) : parseInt(req.body.year, 10) || new Date().getFullYear();
+          const id = `HP-${yearVal}-${Math.floor(100 + Math.random() * 900)}`;
+          const subjectVal = (autoMeta.subject && autoMeta.subject.value !== 'Not detected') ? String(autoMeta.subject.value) : (req.body.subject || 'General Examination');
+          const codeVal = (autoMeta.subjectCode && autoMeta.subjectCode.value !== 'Not detected') ? String(autoMeta.subjectCode.value) : (req.body.subjectCode || 'HIST-101');
+          const titleVal = req.body.title || ((autoMeta.subject && autoMeta.subject.value !== 'Not detected') ? `${autoMeta.subject.value} (${yearVal})` : file.originalname.replace(/\.[^/.]+$/, ''));
+
+          const record: HistoricalPaperRecord = {
+            id,
+            title: titleVal,
+            paperTitle: titleVal,
+            subject: subjectVal,
+            subjectCode: codeVal,
+            year: yearVal,
+            dateIndexed: new Date().toISOString().substring(0, 10),
+            totalQuestions: extracted.questions.length > 0 ? extracted.questions.length : parseInt(req.body.totalQuestions, 10) || 30,
+            status: 'Vectorized & Active',
+            fileFormat: path.extname(file.originalname).toUpperCase().replace('.', '') as any,
+            filename: file.originalname,
+            originalFilename: file.originalname,
+            storagePath: file.path,
+            fileSize: file.size,
+            sha256,
+            vectorEmbeddingsCount: Math.max(80, extracted.questions.length * 4),
+            ocrSnippet: extracted.extractedText.slice(0, 300) || 'Indexed exam question texts.',
+            extractedText: extracted.extractedText,
+            createdAt: new Date().toISOString(),
+            questions: extracted.questions,
+          };
+
+          db.addHistoricalPaper(record);
+          results.push({
+            id: record.id,
+            title: record.title,
+            filename: record.filename,
+            relativePath,
+            size: record.fileSize,
+            sha256: record.sha256,
+            status: 'UPLOADED',
+            record,
+          });
+          uploadedCount++;
+        } catch (err: any) {
+          results.push({
+            id: `err-${Date.now()}`,
+            title: file.originalname,
+            filename: file.originalname,
+            relativePath,
+            size: file.size,
+            status: 'FAILED',
+            error: err.message || 'Failed to process historical paper.',
+          });
+          failedCount++;
+        }
       }
 
-      const year = parseInt(req.body.year, 10) || new Date().getFullYear();
-      const id = `HP-${year}-${Math.floor(100 + Math.random() * 900)}`;
-      const title = req.body.title || file.originalname.replace(/\.[^/.]+$/, '');
-      const subject = req.body.subject || 'General Examination';
-      const subjectCode = req.body.subjectCode || 'HIST-101';
-
-      const extracted = await extractDocumentContent(file.path, file.mimetype, file.originalname);
-      const extractedText = extracted.extractedText;
-      const questions = extracted.questions;
-
-      const record: HistoricalPaperRecord = {
-        id,
-        title,
-        paperTitle: title,
-        subject,
-        subjectCode,
-        year,
-        dateIndexed: new Date().toISOString().substring(0, 10),
-        totalQuestions: questions.length > 0 ? questions.length : parseInt(req.body.totalQuestions, 10) || 40,
-        status: 'Vectorized & Active',
-        fileFormat: path.extname(file.originalname).toUpperCase().replace('.', '') as any,
-        filename: file.originalname,
-        originalFilename: file.originalname,
-        storagePath: file.path,
-        fileSize: file.size,
-        sha256,
-        vectorEmbeddingsCount: Math.max(80, questions.length * 4),
-        ocrSnippet: extractedText.slice(0, 300) || 'Indexed exam question texts and formula schema.',
-        extractedText,
-        createdAt: new Date().toISOString(),
-        questions,
-      };
-
-      db.addHistoricalPaper(record);
+      const firstSuccess = results.find((r) => r.status === 'UPLOADED' || r.status === 'DUPLICATE');
 
       res.status(201).json({
-        id: record.id,
-        title: record.title,
-        filename: record.filename,
-        size: record.fileSize,
-        sha256: record.sha256,
-        vectorEmbeddingsCount: record.vectorEmbeddingsCount,
-        record,
+        success: uploadedCount > 0 || duplicateCount > 0,
+        totalCount: files.length,
+        uploadedCount,
+        duplicateCount,
+        failedCount,
+        items: results,
+        id: firstSuccess?.id,
+        title: firstSuccess?.title,
+        filename: firstSuccess?.filename,
+        record: firstSuccess?.record,
       });
     } catch (err: any) {
       console.error('Historical upload failed:', err);
@@ -595,6 +1034,11 @@ apiRouter.get('/historical', (req: Request, res: Response) => {
   const list = db.getHistoricalPapers(search);
   res.json(list);
 });
+apiRouter.get('/historical-papers', (req: Request, res: Response) => {
+  const search = req.query.search as string;
+  const list = db.getHistoricalPapers(search);
+  res.json(list);
+});
 
 apiRouter.get('/historical/:id', (req: Request, res: Response) => {
   const paper = db.getHistoricalPaperById(req.params.id);
@@ -604,7 +1048,16 @@ apiRouter.get('/historical/:id', (req: Request, res: Response) => {
   }
   res.json(paper);
 });
+apiRouter.get('/historical-papers/:id', (req: Request, res: Response) => {
+  const paper = db.getHistoricalPaperById(req.params.id);
+  if (!paper) {
+    res.status(404).json({ error: 'Historical paper not found.' });
+    return;
+  }
+  res.json(paper);
+});
 
+// Delete single historical paper
 apiRouter.delete('/historical/:id', (req: Request, res: Response) => {
   const paper = db.getHistoricalPaperById(req.params.id);
   if (!paper) {
@@ -621,29 +1074,91 @@ apiRouter.delete('/historical/:id', (req: Request, res: Response) => {
   const success = db.deleteHistoricalPaper(req.params.id);
   res.json({ success, message: 'Historical paper deleted from vault and index.' });
 });
-
-apiRouter.get('/historical/:id/document', (req: Request, res: Response): void => {
+apiRouter.delete('/historical-papers/:id', (req: Request, res: Response) => {
   const paper = db.getHistoricalPaperById(req.params.id);
   if (!paper) {
-    res.status(404).send('Historical document unavailable.');
+    res.status(404).json({ error: 'Historical paper not found.' });
+    return;
+  }
+
+  if (paper.storagePath && fs.existsSync(paper.storagePath)) {
+    try {
+      fs.unlinkSync(paper.storagePath);
+    } catch (e) {}
+  }
+
+  const success = db.deleteHistoricalPaper(req.params.id);
+  res.json({ success, message: 'Historical paper deleted from vault and index.' });
+});
+
+// Bulk Delete All Historical Papers
+const handleDeleteAllHistorical = (req: Request, res: Response): void => {
+  try {
+    const result = db.deleteAllHistoricalPapers();
+    res.json({
+      success: true,
+      message: `Successfully deleted all ${result.count} historical papers, storage files, and vector indices.`,
+      count: result.count,
+    });
+  } catch (err: any) {
+    console.error('Failed to delete all historical papers:', err);
+    res.status(500).json({ error: err.message || 'Failed to delete all historical papers.' });
+  }
+};
+apiRouter.delete('/historical/all', handleDeleteAllHistorical);
+apiRouter.delete('/historical', handleDeleteAllHistorical);
+apiRouter.delete('/historical-papers/all', handleDeleteAllHistorical);
+apiRouter.delete('/historical-papers', handleDeleteAllHistorical);
+
+// Generate Physical Trial Examination Paper
+const handleGenerateTrialPaper = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const paper = await generateTrialExaminationPaper();
+    res.status(201).json({
+      success: true,
+      message: 'Physical binary trial examination paper generated and vectorized.',
+      paper,
+      id: paper.id,
+      record: paper,
+    });
+  } catch (err: any) {
+    console.error('Failed to generate trial paper:', err);
+    res.status(500).json({ error: err.message || 'Failed to generate physical trial examination paper.' });
+  }
+};
+apiRouter.post('/historical/generate-trial-paper', handleGenerateTrialPaper);
+apiRouter.post('/historical/generate-trial', handleGenerateTrialPaper);
+apiRouter.post('/historical-papers/generate-trial', handleGenerateTrialPaper);
+
+// Retrieve Historical Document Binary Stream
+const handleGetHistoricalDocument = (req: Request, res: Response): void => {
+  const paper = db.getHistoricalPaperById(req.params.id);
+  if (!paper) {
+    res.status(404).send('Historical document unavailable (record not found).');
     return;
   }
 
   const filePath = paper.storagePath;
   if (!filePath || !fs.existsSync(filePath) || !isSafePath(filePath)) {
-    res.status(404).send('Document not found on storage.');
+    res.status(404).send('Historical document file unavailable on disk.');
     return;
   }
 
   const ext = path.extname(filePath).toLowerCase();
   let contentType = 'application/octet-stream';
   if (ext === '.pdf') contentType = 'application/pdf';
-  else if (['.png', '.jpg', '.jpeg', '.webp'].includes(ext)) contentType = `image/${ext.replace('.', '')}`;
+  else if (ext === '.png') contentType = 'image/png';
+  else if (ext === '.jpg' || ext === '.jpeg') contentType = 'image/jpeg';
+  else if (ext === '.webp') contentType = 'image/webp';
 
   res.setHeader('Content-Type', contentType);
-  res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(paper.filename)}"`);
+  res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(paper.originalFilename || paper.filename)}"`);
+  res.setHeader('Access-Control-Allow-Origin', '*');
   fs.createReadStream(filePath).pipe(res);
-});
+};
+apiRouter.get('/historical/:id/document', handleGetHistoricalDocument);
+apiRouter.get('/historical-papers/:id/document', handleGetHistoricalDocument);
+apiRouter.get('/historical/:id/file', handleGetHistoricalDocument);
 
 // ==========================================
 // 3. REAL PAPERS API
@@ -651,98 +1166,327 @@ apiRouter.get('/historical/:id/document', (req: Request, res: Response): void =>
 
 apiRouter.post(
   '/real-papers/upload',
-  uploadRealPapers.single('file'),
+  uploadRealPapers.any(),
   async (req: Request, res: Response): Promise<void> => {
     try {
-      if (!req.file) {
-        res.status(400).json({ error: 'No file uploaded. Please select a reference real paper.' });
+      const files: Express.Multer.File[] = (req.files as Express.Multer.File[]) || (req.file ? [req.file] : []);
+      if (!files || files.length === 0) {
+        res.status(400).json({ error: 'No files uploaded. Please select reference verified papers or archives.' });
         return;
       }
 
-      const file = req.file;
-      const validation = validateFileType(file.originalname, file.mimetype);
-      if (!validation.valid) {
-        if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
-        res.status(400).json({ error: validation.error });
-        return;
+      let relativePathsMap: Record<string, string> = {};
+      if (req.body.relativePaths) {
+        try {
+          const parsed = typeof req.body.relativePaths === 'string' ? JSON.parse(req.body.relativePaths) : req.body.relativePaths;
+          if (Array.isArray(parsed)) {
+            parsed.forEach((p, idx) => {
+              if (files[idx]) relativePathsMap[files[idx].originalname] = p;
+            });
+          } else if (typeof parsed === 'object') {
+            relativePathsMap = parsed;
+          }
+        } catch (e) {}
       }
 
-      const fileBuffer = fs.readFileSync(file.path);
-      const sha256 = computeSha256(fileBuffer);
+      const results: Array<{
+        id: string;
+        filename: string;
+        relativePath?: string;
+        subject?: string;
+        size: number;
+        sha256?: string;
+        status: 'UPLOADED' | 'DUPLICATE' | 'FAILED';
+        verificationStatus?: string;
+        isDuplicate?: boolean;
+        message?: string;
+        error?: string;
+        record?: RealPaperRecord;
+      }> = [];
 
-      const existing = db.findRealPaperBySha256(sha256);
-      if (existing) {
-        if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
-        res.status(409).json({ message: 'Real paper already exists.', id: existing.id, isDuplicate: true });
-        return;
+      let uploadedCount = 0;
+      let duplicateCount = 0;
+      let failedCount = 0;
+
+      for (const file of files) {
+        const ext = path.extname(file.originalname).toLowerCase();
+        const isZip = ext === '.zip' || file.mimetype.includes('zip');
+        const relativePath = relativePathsMap[file.originalname] || file.originalname;
+
+        if (isZip) {
+          try {
+            const uploadId = `UP-REAL-ZIP-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`;
+            const archiveId = `ARC-REAL-${Date.now()}`;
+            const zipResult = await extractZipArchiveRecursively(file.path, uploadId, archiveId);
+
+            if (zipResult.documents.length === 0) {
+              results.push({
+                id: `zip-${Date.now()}`,
+                filename: file.originalname,
+                relativePath,
+                size: file.size,
+                status: 'FAILED',
+                error: 'No supported PDF or image documents found in ZIP archive.',
+              });
+              failedCount++;
+              continue;
+            }
+
+            for (const doc of zipResult.documents) {
+              try {
+                const docBuffer = fs.readFileSync(doc.storagePath);
+                const sha256 = computeSha256(docBuffer);
+                const existing = db.findRealPaperBySha256(sha256);
+
+                if (existing) {
+                  results.push({
+                    id: existing.id,
+                    filename: doc.originalFilename,
+                    relativePath: doc.archiveRelativePath,
+                    subject: existing.subject,
+                    size: doc.fileSize,
+                    sha256,
+                    status: 'DUPLICATE',
+                    isDuplicate: true,
+                    verificationStatus: existing.verificationStatus,
+                    message: 'Real paper already exists in baseline repository.',
+                    record: existing,
+                  });
+                  duplicateCount++;
+                  continue;
+                }
+
+                const extracted = await extractDocumentContent(doc.storagePath, doc.mimeType, doc.originalFilename);
+                const autoMeta = extractMetadataFromContent(extracted.extractedText, doc.originalFilename, extracted.summary);
+
+                const yearVal = (autoMeta.year && autoMeta.year.value !== 'Not detected') ? Number(autoMeta.year.value) : new Date().getFullYear();
+                const id = `RP-${yearVal}-${Math.floor(100 + Math.random() * 900)}`;
+                const subjectVal = (autoMeta.subject && autoMeta.subject.value !== 'Not detected') ? String(autoMeta.subject.value) : (req.body.subject || 'Examination Material');
+                const codeVal = (autoMeta.subjectCode && autoMeta.subjectCode.value !== 'Not detected') ? String(autoMeta.subjectCode.value) : (req.body.subjectCode || 'EXAM-200');
+                const maxMarks = (autoMeta.maxMarks && typeof autoMeta.maxMarks.value === 'number') ? autoMeta.maxMarks.value : parseInt(req.body.maximumMarks || req.body.maxMarks, 10) || 100;
+                const durationVal = (autoMeta.duration && autoMeta.duration.value !== 'Not detected') ? String(autoMeta.duration.value) : (req.body.duration || '3 Hours');
+                const questions = extracted.questions;
+
+                const record: RealPaperRecord = {
+                  id,
+                  documentId: `doc_rp_${Date.now()}_${Math.floor(100 + Math.random() * 900)}`,
+                  filename: doc.originalFilename,
+                  originalFilename: doc.originalFilename,
+                  storagePath: doc.storagePath,
+                  fileSize: doc.fileSize,
+                  sha256,
+                  subject: subjectVal,
+                  subjectCode: codeVal,
+                  exam: autoMeta.examType?.value || req.body.exam || 'End-Semester Examination',
+                  examType: autoMeta.paperType?.value || req.body.examType || 'Regular End-Term',
+                  year: yearVal,
+                  semester: (autoMeta.semester && autoMeta.semester.value !== 'Not detected') ? String(autoMeta.semester.value) : (req.body.semester || 'Fall 2026'),
+                  session: req.body.session || 'Morning',
+                  examDate: (autoMeta.examDate && autoMeta.examDate.value !== 'Not detected') ? String(autoMeta.examDate.value) : (req.body.examDate || new Date().toISOString().substring(0, 10)),
+                  duration: durationVal,
+                  maximumMarks: maxMarks,
+                  pageCount: extracted.summary.totalPages || Math.max(1, Math.round(doc.fileSize / 50000)),
+                  verificationStatus: 'PENDING',
+                  extractedText: extracted.extractedText || 'Newly uploaded reference paper awaiting verification.',
+                  structuredData: {
+                    sections: autoMeta.sectionCount?.value || 3,
+                    questions: questions.map((q, idx) => ({
+                      id: `Q-${Date.now()}-${idx + 1}`,
+                      paperId: id,
+                      questionNumber: q.questionNumber,
+                      fullQuestionNumber: q.fullQuestionNumber,
+                      questionText: q.questionText,
+                      normalizedText: q.questionText.toLowerCase(),
+                      questionType: 'DESCRIPTIVE',
+                      topic: q.topic || 'Core Examination Material',
+                      difficulty: 'Medium',
+                      marks: q.marks || Math.round(maxMarks / Math.max(1, questions.length)),
+                      required: true,
+                      section: q.section,
+                      position: idx + 1,
+                      pageNumber: 1,
+                      extractionConfidence: q.confidence,
+                    })),
+                  },
+                  createdAt: new Date().toISOString().replace('T', ' ').substring(0, 19),
+                  updatedAt: new Date().toISOString().replace('T', ' ').substring(0, 19),
+                };
+
+                db.addRealPaper(record);
+                results.push({
+                  id: record.id,
+                  filename: record.filename,
+                  relativePath: doc.archiveRelativePath,
+                  subject: record.subject,
+                  size: record.fileSize,
+                  sha256: record.sha256,
+                  status: 'UPLOADED',
+                  verificationStatus: record.verificationStatus,
+                  record,
+                });
+                uploadedCount++;
+              } catch (docErr: any) {
+                results.push({
+                  id: `err-${Date.now()}`,
+                  filename: doc.originalFilename,
+                  relativePath: doc.archiveRelativePath,
+                  size: doc.fileSize,
+                  status: 'FAILED',
+                  error: docErr.message || 'Failed to extract paper from ZIP.',
+                });
+                failedCount++;
+              }
+            }
+          } catch (zipErr: any) {
+            results.push({
+              id: `err-${Date.now()}`,
+              filename: file.originalname,
+              relativePath,
+              size: file.size,
+              status: 'FAILED',
+              error: zipErr.message || 'Failed to process ZIP archive.',
+            });
+            failedCount++;
+          }
+          continue;
+        }
+
+        // Single PDF / Image file
+        try {
+          const validation = validateFileType(file.originalname, file.mimetype);
+          if (!validation.valid) {
+            if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
+            results.push({
+              id: `err-${Date.now()}`,
+              filename: file.originalname,
+              relativePath,
+              size: file.size,
+              status: 'FAILED',
+              error: validation.error,
+            });
+            failedCount++;
+            continue;
+          }
+
+          const fileBuffer = fs.readFileSync(file.path);
+          const sha256 = computeSha256(fileBuffer);
+          const existing = db.findRealPaperBySha256(sha256);
+
+          if (existing) {
+            if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
+            results.push({
+              id: existing.id,
+              filename: file.originalname,
+              relativePath,
+              subject: existing.subject,
+              size: file.size,
+              sha256,
+              status: 'DUPLICATE',
+              isDuplicate: true,
+              verificationStatus: existing.verificationStatus,
+              message: 'Real paper already exists in baseline repository.',
+              record: existing,
+            });
+            duplicateCount++;
+            continue;
+          }
+
+          const extracted = await extractDocumentContent(file.path, file.mimetype, file.originalname);
+          const autoMeta = extractMetadataFromContent(extracted.extractedText, file.originalname, extracted.summary);
+
+          const yearVal = (autoMeta.year && autoMeta.year.value !== 'Not detected') ? Number(autoMeta.year.value) : new Date().getFullYear();
+          const id = `RP-${yearVal}-${Math.floor(100 + Math.random() * 900)}`;
+          const subjectVal = req.body.subject || ((autoMeta.subject && autoMeta.subject.value !== 'Not detected') ? String(autoMeta.subject.value) : 'Examination Material');
+          const codeVal = req.body.subjectCode || ((autoMeta.subjectCode && autoMeta.subjectCode.value !== 'Not detected') ? String(autoMeta.subjectCode.value) : 'EXAM-200');
+          const maxMarks = parseInt(req.body.maximumMarks || req.body.maxMarks, 10) || (autoMeta.maxMarks && typeof autoMeta.maxMarks.value === 'number' ? autoMeta.maxMarks.value : 100);
+          const durationVal = req.body.duration || ((autoMeta.duration && autoMeta.duration.value !== 'Not detected') ? String(autoMeta.duration.value) : '3 Hours');
+          const questions = extracted.questions;
+
+          const record: RealPaperRecord = {
+            id,
+            documentId: `doc_rp_${Date.now()}_${Math.floor(100 + Math.random() * 900)}`,
+            filename: file.originalname,
+            originalFilename: file.originalname,
+            storagePath: file.path,
+            fileSize: file.size,
+            sha256,
+            subject: subjectVal,
+            subjectCode: codeVal,
+            exam: req.body.exam || autoMeta.examType?.value || 'End-Semester Examination',
+            examType: req.body.examType || autoMeta.paperType?.value || 'Regular End-Term',
+            year: yearVal,
+            semester: req.body.semester || ((autoMeta.semester && autoMeta.semester.value !== 'Not detected') ? String(autoMeta.semester.value) : 'Fall 2026'),
+            session: req.body.session || 'Morning',
+            examDate: req.body.examDate || ((autoMeta.examDate && autoMeta.examDate.value !== 'Not detected') ? String(autoMeta.examDate.value) : new Date().toISOString().substring(0, 10)),
+            duration: durationVal,
+            maximumMarks: maxMarks,
+            pageCount: extracted.summary.totalPages || Math.max(1, Math.round(file.size / 50000)),
+            verificationStatus: 'PENDING',
+            extractedText: extracted.extractedText || 'Newly uploaded reference paper awaiting verification.',
+            structuredData: {
+              sections: autoMeta.sectionCount?.value || 3,
+              questions: questions.map((q, idx) => ({
+                id: `Q-${Date.now()}-${idx + 1}`,
+                paperId: id,
+                questionNumber: q.questionNumber,
+                fullQuestionNumber: q.fullQuestionNumber,
+                questionText: q.questionText,
+                normalizedText: q.questionText.toLowerCase(),
+                questionType: 'DESCRIPTIVE',
+                topic: q.topic || 'Core Examination Material',
+                difficulty: 'Medium',
+                marks: q.marks || Math.round(maxMarks / Math.max(1, questions.length)),
+                required: true,
+                section: q.section,
+                position: idx + 1,
+                pageNumber: 1,
+                extractionConfidence: q.confidence,
+              })),
+            },
+            createdAt: new Date().toISOString().replace('T', ' ').substring(0, 19),
+            updatedAt: new Date().toISOString().replace('T', ' ').substring(0, 19),
+          };
+
+          db.addRealPaper(record);
+          results.push({
+            id: record.id,
+            filename: record.filename,
+            relativePath,
+            subject: record.subject,
+            size: record.fileSize,
+            sha256: record.sha256,
+            status: 'UPLOADED',
+            verificationStatus: record.verificationStatus,
+            record,
+          });
+          uploadedCount++;
+        } catch (err: any) {
+          results.push({
+            id: `err-${Date.now()}`,
+            filename: file.originalname,
+            relativePath,
+            size: file.size,
+            status: 'FAILED',
+            error: err.message || 'Failed to process verified paper.',
+          });
+          failedCount++;
+        }
       }
 
-      const year = new Date().getFullYear();
-      const id = `RP-${year}-${Math.floor(100 + Math.random() * 900)}`;
-      const subject = req.body.subject || 'Database Management Systems';
-      const subjectCode = req.body.subjectCode || 'CS501';
-      const maxMarks = parseInt(req.body.maximumMarks || req.body.maxMarks, 10) || 100;
-
-      const extracted = await extractDocumentContent(file.path, file.mimetype, file.originalname);
-      const extractedText = extracted.extractedText;
-      const questions = extracted.questions;
-
-      const record: RealPaperRecord = {
-        id,
-        documentId: `doc_rp_${Date.now()}`,
-        filename: file.originalname,
-        originalFilename: file.originalname,
-        storagePath: file.path,
-        fileSize: file.size,
-        sha256,
-        subject,
-        subjectCode,
-        exam: req.body.exam || 'End-Semester Examination',
-        examType: req.body.examType || 'Regular End-Term',
-        year,
-        semester: req.body.semester || 'Fall 2026',
-        session: req.body.session || 'Morning',
-        examDate: req.body.examDate || new Date().toISOString().substring(0, 10),
-        duration: req.body.duration || '3 Hours',
-        maximumMarks: maxMarks,
-        pageCount: extracted.summary.totalPages || Math.max(1, Math.round(file.size / 50000)),
-        verificationStatus: 'PENDING',
-        extractedText: extractedText || 'Newly uploaded reference paper awaiting OCR processing.',
-        structuredData: {
-          sections: 3,
-          questions: questions.map((q, idx) => ({
-            id: `Q-${Date.now()}-${idx + 1}`,
-            paperId: id,
-            questionNumber: q.questionNumber,
-            fullQuestionNumber: q.fullQuestionNumber,
-            questionText: q.questionText,
-            normalizedText: q.questionText.toLowerCase(),
-            questionType: 'DESCRIPTIVE',
-            topic: q.topic || 'Core Examination Material',
-            difficulty: 'Medium',
-            marks: q.marks || Math.round(maxMarks / Math.max(1, questions.length)),
-            required: true,
-            section: q.section,
-            position: idx + 1,
-            pageNumber: 1,
-            extractionConfidence: q.confidence,
-          })),
-        },
-        createdAt: new Date().toISOString().replace('T', ' ').substring(0, 19),
-        updatedAt: new Date().toISOString().replace('T', ' ').substring(0, 19),
-      };
-
-      db.addRealPaper(record);
+      const firstSuccess = results.find((r) => r.status === 'UPLOADED' || r.status === 'DUPLICATE');
 
       res.status(201).json({
-        id: record.id,
-        filename: record.filename,
-        subject: record.subject,
-        size: record.fileSize,
-        sha256: record.sha256,
-        verificationStatus: record.verificationStatus,
-        questionsCount: record.structuredData.questions.length,
-        record,
+        success: uploadedCount > 0 || duplicateCount > 0,
+        totalCount: files.length,
+        uploadedCount,
+        duplicateCount,
+        failedCount,
+        items: results,
+        id: firstSuccess?.id,
+        filename: firstSuccess?.filename,
+        subject: firstSuccess?.subject,
+        verificationStatus: firstSuccess?.verificationStatus,
+        record: firstSuccess?.record,
       });
     } catch (err: any) {
       console.error('Real paper upload failed:', err);
@@ -820,28 +1564,51 @@ apiRouter.delete('/real-papers/:id', (req: Request, res: Response) => {
   res.json({ success, message: 'Real paper removed from comparison index.' });
 });
 
-apiRouter.get('/real-papers/:id/document', (req: Request, res: Response): void => {
+// Bulk Delete All Real Papers
+const handleDeleteAllRealPapers = (req: Request, res: Response): void => {
+  try {
+    const result = db.deleteAllRealPapers();
+    res.json({
+      success: true,
+      message: `Successfully deleted all ${result.count} verified baseline papers and storage files.`,
+      count: result.count,
+    });
+  } catch (err: any) {
+    console.error('Failed to delete all verified papers:', err);
+    res.status(500).json({ error: err.message || 'Failed to delete all verified baseline papers.' });
+  }
+};
+apiRouter.delete('/real-papers/all', handleDeleteAllRealPapers);
+apiRouter.delete('/real-papers', handleDeleteAllRealPapers);
+
+// Retrieve Real Paper Document Binary Stream
+const handleGetRealPaperDocument = (req: Request, res: Response): void => {
   const paper = db.getRealPaperById(req.params.id);
   if (!paper) {
-    res.status(404).send('Real paper document unavailable.');
+    res.status(404).send('Real paper document unavailable (record not found).');
     return;
   }
 
   const filePath = paper.storagePath;
   if (!filePath || !fs.existsSync(filePath) || !isSafePath(filePath)) {
-    res.status(404).send('Document not found on storage.');
+    res.status(404).send('Real paper document file unavailable on disk.');
     return;
   }
 
   const ext = path.extname(filePath).toLowerCase();
   let contentType = 'application/octet-stream';
   if (ext === '.pdf') contentType = 'application/pdf';
-  else if (['.png', '.jpg', '.jpeg', '.webp'].includes(ext)) contentType = `image/${ext.replace('.', '')}`;
+  else if (ext === '.png') contentType = 'image/png';
+  else if (ext === '.jpg' || ext === '.jpeg') contentType = 'image/jpeg';
+  else if (ext === '.webp') contentType = 'image/webp';
 
   res.setHeader('Content-Type', contentType);
-  res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(paper.filename)}"`);
+  res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(paper.originalFilename || paper.filename)}"`);
+  res.setHeader('Access-Control-Allow-Origin', '*');
   fs.createReadStream(filePath).pipe(res);
-});
+};
+apiRouter.get('/real-papers/:id/document', handleGetRealPaperDocument);
+apiRouter.get('/real-papers/:id/file', handleGetRealPaperDocument);
 
 // ==========================================
 // 4. EXAM METADATA API
@@ -1014,3 +1781,294 @@ apiRouter.put('/settings', (req: Request, res: Response) => {
 apiRouter.get('/audit-logs', (req: Request, res: Response) => {
   res.json(db.getAuditLogs());
 });
+
+// ==========================================
+// 11. AI ASSISTANT CONFIGURATION & CHAT API
+// ==========================================
+
+// Get provider presets with default official URLs and models
+apiRouter.get('/ai-assistant/presets', (req: Request, res: Response) => {
+  res.json(AiAssistantRegistry.getPresets());
+});
+
+// Get configured assistant providers (with masked API keys)
+apiRouter.get('/ai-assistant/providers', (req: Request, res: Response) => {
+  res.json(db.getAiProviders());
+});
+
+// Save or update assistant provider configuration
+apiRouter.post('/ai-assistant/providers', (req: Request, res: Response) => {
+  try {
+    const {
+      id,
+      providerId,
+      modelDisplayName,
+      modelName,
+      modelId,
+      baseUrl,
+      useCustomBaseUrl,
+      apiKey,
+      enabled,
+      isDefault,
+      status,
+    } = req.body;
+
+    if (!providerId || !modelId || !modelDisplayName) {
+      res.status(400).json({ error: 'Provider, Model ID, and Display Name are required.' });
+      return;
+    }
+
+    const saved = db.saveAiProvider({
+      id,
+      providerId,
+      modelDisplayName,
+      modelName: modelName || modelId,
+      modelId,
+      baseUrl: baseUrl || '',
+      useCustomBaseUrl: !!useCustomBaseUrl,
+      apiKey,
+      enabled,
+      isDefault,
+      status,
+    });
+
+    res.json({ success: true, provider: saved });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Failed to save provider configuration.' });
+  }
+});
+
+// Set provider as default
+apiRouter.post('/ai-assistant/providers/:id/default', (req: Request, res: Response) => {
+  const success = db.setDefaultAiProvider(req.params.id);
+  if (!success) {
+    res.status(404).json({ error: 'Provider configuration not found.' });
+    return;
+  }
+  res.json({ success: true, message: 'Default AI provider updated.' });
+});
+
+// Toggle provider enabled/disabled
+apiRouter.post('/ai-assistant/providers/:id/toggle', (req: Request, res: Response) => {
+  const { enabled } = req.body;
+  const updated = db.toggleAiProvider(req.params.id, !!enabled);
+  if (!updated) {
+    res.status(404).json({ error: 'Provider configuration not found.' });
+    return;
+  }
+  res.json({ success: true, provider: updated });
+});
+
+// Delete provider
+apiRouter.delete('/ai-assistant/providers/:id', (req: Request, res: Response) => {
+  const success = db.deleteAiProvider(req.params.id);
+  if (!success) {
+    res.status(404).json({ error: 'Provider configuration not found.' });
+    return;
+  }
+  res.json({ success: true, message: 'Provider configuration deleted.' });
+});
+
+// Real connection test against provider endpoint
+apiRouter.post('/ai-assistant/test-connection', async (req: Request, res: Response) => {
+  try {
+    const { providerId, modelId, baseUrl, apiKey, useCustomBaseUrl, savedProviderId } = req.body;
+
+    let effectiveApiKey = apiKey;
+    // If testing an existing saved provider and key is masked or omitted, retrieve stored secret
+    if ((!effectiveApiKey || effectiveApiKey.includes('••••')) && savedProviderId) {
+      const stored = db.getAiProviderById(savedProviderId, true);
+      if (stored?.apiKey) {
+        effectiveApiKey = stored.apiKey;
+      }
+    }
+
+    const result = await AiAssistantRegistry.testConnection({
+      providerId,
+      modelId,
+      baseUrl,
+      apiKey: effectiveApiKey,
+      useCustomBaseUrl,
+    });
+
+    // If savedProviderId was supplied, update stored status
+    if (savedProviderId) {
+      db.updateAiProviderStatus(savedProviderId, 'CONNECTED', result.responseTimeMs);
+    }
+
+    res.json(result);
+  } catch (err: any) {
+    const safeError = AiAssistantRegistry.sanitizeErrorMessage(err.message || 'Connection test failed.');
+    if (req.body.savedProviderId) {
+      db.updateAiProviderStatus(req.body.savedProviderId, 'ERROR', undefined, safeError);
+    }
+    res.status(400).json({ success: false, error: safeError });
+  }
+});
+
+// Discover models from provider API
+apiRouter.post('/ai-assistant/discover-models', async (req: Request, res: Response) => {
+  try {
+    const { providerId, baseUrl, apiKey, useCustomBaseUrl, savedProviderId } = req.body;
+
+    let effectiveApiKey = apiKey;
+    if ((!effectiveApiKey || effectiveApiKey.includes('••••')) && savedProviderId) {
+      const stored = db.getAiProviderById(savedProviderId, true);
+      if (stored?.apiKey) effectiveApiKey = stored.apiKey;
+    }
+
+    const models = await AiAssistantRegistry.discoverModels({
+      providerId,
+      baseUrl,
+      apiKey: effectiveApiKey,
+      useCustomBaseUrl,
+    });
+
+    res.json({ success: true, models });
+  } catch (err: any) {
+    res.status(400).json({
+      success: false,
+      error: AiAssistantRegistry.sanitizeErrorMessage(err.message || 'Model discovery failed.'),
+    });
+  }
+});
+
+// Main AI Assistant Chat endpoint
+apiRouter.post('/ai-assistant/chat', async (req: Request, res: Response) => {
+  try {
+    const { message, history, context, confirmedAction } = req.body;
+
+    if (!message && !confirmedAction) {
+      res.status(400).json({ error: 'Message or confirmed action is required.' });
+      return;
+    }
+
+    const response = await AiAssistantService.processChat({
+      message: message || '',
+      history: history || [],
+      context,
+      confirmedAction,
+    });
+
+    res.json(response);
+  } catch (err: any) {
+    console.error('AI Assistant chat endpoint error:', err);
+    res.status(500).json({
+      error: AiAssistantRegistry.sanitizeErrorMessage(err.message || 'Internal error in AI Assistant.'),
+    });
+  }
+});
+
+// Automated 27-scenario test suite for AI Assistant
+apiRouter.get('/ai-assistant/test-suite', async (req: Request, res: Response) => {
+  try {
+    const report = await runAllAiAssistantTests();
+    res.json(report);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Failed to execute AI assistant test suite.' });
+  }
+});
+
+// ==========================================
+// TEST DATA / TRIAL DATA SYSTEM API
+// ==========================================
+
+const checkTestDataAllowed = (req: Request, res: Response, next: () => void) => {
+  if (process.env.APP_ENV === 'production' && process.env.ENABLE_TEST_DATA === 'false') {
+    res.status(403).json({
+      error: 'Test Data generation is disabled in production environment (ENABLE_TEST_DATA=false).',
+    });
+    return;
+  }
+  next();
+};
+
+apiRouter.use('/test-data', checkTestDataAllowed);
+
+// Get current test data status and counts
+apiRouter.get('/test-data/status', (req: Request, res: Response) => {
+  try {
+    const status = db.getTestDataStatus();
+    res.json(status);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Failed to fetch test data status.' });
+  }
+});
+
+// Add Trial Historical Paper
+apiRouter.post('/test-data/trial-paper', async (req: Request, res: Response) => {
+  try {
+    const { subject, subjectCode, year } = req.body || {};
+    const paper = await generateTrialHistoricalPaperFixture({ subject, subjectCode, year });
+    res.status(201).json({
+      success: true,
+      message: 'Generated and indexed physical trial historical paper.',
+      id: paper.id,
+      paper,
+      record: paper,
+    });
+  } catch (err: any) {
+    console.error('Failed to generate trial paper:', err);
+    res.status(500).json({ error: err.message || 'Failed to generate trial paper.' });
+  }
+});
+
+// Add Fake Suspicious Paper (runs through real pipeline -> high risk alert)
+apiRouter.post('/test-data/fake-suspicious', async (req: Request, res: Response) => {
+  try {
+    const { subject, subjectCode, platform, source } = req.body || {};
+    const result = await generateFakeSuspiciousPaperFixture({ subject, subjectCode, platform, source });
+    res.status(201).json({
+      success: true,
+      message: 'Generated physical suspicious document, processed OCR, and calculated risk score.',
+      id: result.candidate.id,
+      candidate: result.candidate,
+      alert: result.alert,
+      review: result.review,
+    });
+  } catch (err: any) {
+    console.error('Failed to generate fake suspicious paper:', err);
+    res.status(500).json({ error: err.message || 'Failed to generate suspicious test document.' });
+  }
+});
+
+// Add Fake Normal Paper (runs through real pipeline -> low risk verified)
+apiRouter.post('/test-data/fake-normal', async (req: Request, res: Response) => {
+  try {
+    const { subject, subjectCode, platform, source } = req.body || {};
+    const result = await generateFakeNormalPaperFixture({ subject, subjectCode, platform, source });
+    res.status(201).json({
+      success: true,
+      message: 'Generated physical normal document and verified low risk score.',
+      id: result.candidate.id,
+      candidate: result.candidate,
+    });
+  } catch (err: any) {
+    console.error('Failed to generate fake normal paper:', err);
+    res.status(500).json({ error: err.message || 'Failed to generate normal test document.' });
+  }
+});
+
+// Generate complete Test Dataset
+apiRouter.post('/test-data/dataset', async (req: Request, res: Response) => {
+  try {
+    const summary = await generateTestDatasetFixture();
+    res.status(201).json(summary);
+  } catch (err: any) {
+    console.error('Failed to generate test dataset:', err);
+    res.status(500).json({ error: err.message || 'Failed to generate test dataset.' });
+  }
+});
+
+// Surgical Purge: Clear ONLY Test Data records and test PDF files
+apiRouter.delete('/test-data', (req: Request, res: Response) => {
+  try {
+    const result = db.clearTestData();
+    res.json(result);
+  } catch (err: any) {
+    console.error('Failed to clear test data:', err);
+    res.status(500).json({ error: err.message || 'Failed to clear test data.' });
+  }
+});
+
+
