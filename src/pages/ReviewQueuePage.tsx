@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PageHeader } from '../components/layout/PageHeader';
 import { ResponsiveContainer } from '../components/common/ResponsiveContainer';
@@ -6,306 +6,380 @@ import { Card } from '../components/common/Card';
 import { SummaryCard } from '../components/common/SummaryCard';
 import { Button } from '../components/common/Button';
 import { SubjectIcon } from '../components/common/SubjectIcon';
-import { ReviewItem } from '../types/review';
-import { ShieldAlert, CircleAlert, CheckCircle2, Search, Filter, ClipboardCheck, UserCheck, Clock, RefreshCw } from 'lucide-react';
+import { PageFilterMenu, FilterFieldDefinition, PageFilterValues } from '../components/common/PageFilterMenu';
+import {
+  ShieldAlert,
+  CircleAlert,
+  CheckCircle2,
+  Search,
+  ClipboardCheck,
+  RefreshCw,
+  Loader2,
+  ArrowUpRight,
+} from 'lucide-react';
+import { api, CandidateRecord } from '../services/api';
 
-const initialReviewQueue: ReviewItem[] = [
-  {
-    id: 'REV-101',
-    candidateId: 'LB-1042',
-    subject: 'Advanced Organic Chemistry II',
-    subjectCode: 'CHEM-402',
-    riskScore: 94,
-    riskLevel: 'HIGH',
-    evidenceCount: 4,
-    detectedTime: '12 mins ago',
-    reviewerStatus: 'Needs Verification',
-    priority: 'High Priority',
-    assignedReviewer: 'Dr. Sarah Jenkins',
-  },
-  {
-    id: 'REV-102',
-    candidateId: 'LB-1043',
-    subject: 'Quantum Physics & Special Relativity',
-    subjectCode: 'PHYS-301',
-    riskScore: 88,
-    riskLevel: 'HIGH',
-    evidenceCount: 3,
-    detectedTime: '38 mins ago',
-    reviewerStatus: 'Assigned',
-    priority: 'High Priority',
-    assignedReviewer: 'Prof. Marcus Vance',
-  },
-  {
-    id: 'REV-103',
-    candidateId: 'LB-1045',
-    subject: 'Microeconomics Theory III',
-    subjectCode: 'ECON-305',
-    riskScore: 78,
-    riskLevel: 'HIGH',
-    evidenceCount: 2,
-    detectedTime: '2 hours ago',
-    reviewerStatus: 'Needs Verification',
-    priority: 'Standard Priority',
-  },
-  {
-    id: 'REV-104',
-    candidateId: 'LB-1044',
-    subject: 'Data Structures & Algorithms',
-    subjectCode: 'CS-201',
-    riskScore: 62,
-    riskLevel: 'REVIEW REQUIRED',
-    evidenceCount: 1,
-    detectedTime: '1 hour ago',
-    reviewerStatus: 'Needs Verification',
-    priority: 'Standard Priority',
-  },
-  {
-    id: 'REV-105',
-    candidateId: 'LB-1047',
-    subject: 'Forensic Pathology & Toxicology',
-    subjectCode: 'MED-502',
-    riskScore: 91,
-    riskLevel: 'HIGH',
-    evidenceCount: 5,
-    detectedTime: '4 hours ago',
-    reviewerStatus: 'Completed',
-    priority: 'High Priority',
-    assignedReviewer: 'Dr. Arthur Sterling',
-  },
-];
+const DEFAULT_REVIEW_FILTERS: PageFilterValues = {
+  status: 'ALL',
+  risk: 'ALL',
+  subject: 'ALL',
+  reviewer: 'ALL',
+  dateFrom: '',
+  dateTo: '',
+};
 
 export const ReviewQueuePage: React.FC = () => {
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string>('ALL');
-  const [riskFilter, setRiskFilter] = useState<string>('ALL');
-  const [queueItems, setQueueItems] = useState<ReviewItem[]>(initialReviewQueue);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(false);
+  const [filterValues, setFilterValues] = useState<PageFilterValues>(DEFAULT_REVIEW_FILTERS);
+  const [candidates, setCandidates] = useState<CandidateRecord[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  // Stats
+  const fetchQueue = async () => {
+    setLoading(true);
+    try {
+      const data = await api.getCandidates({ status: 'ALL' });
+      setCandidates(data);
+    } catch (err) {
+      console.error('Failed to load review queue:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchQueue();
+  }, []);
+
+  // Stats derived honestly from actual database candidates
   const stats = useMemo(() => {
-    const needsVerification = queueItems.filter(i => i.reviewerStatus === 'Needs Verification').length;
-    const inReview = queueItems.filter(i => i.reviewerStatus === 'Assigned').length;
-    const highRisk = queueItems.filter(i => i.riskLevel === 'HIGH').length;
-    const completed = queueItems.filter(i => i.reviewerStatus === 'Completed').length;
-    return { needsVerification, inReview, highRisk, completed };
-  }, [queueItems]);
+    const needsVerification = candidates.filter(
+      (c) => c.review === 'Needs Verification' || c.review === 'Pending'
+    ).length;
+    const reviewed = candidates.filter((c) => c.review === 'Reviewed').length;
+    const highRisk = candidates.filter((c) => c.risk === 'HIGH').length;
+    const total = candidates.length;
+    return { needsVerification, reviewed, highRisk, total };
+  }, [candidates]);
+
+  // Subject options from real items
+  const subjectOptions = useMemo(() => {
+    const subjects = Array.from(new Set(candidates.map((c) => c.subject).filter(Boolean)));
+    return subjects.map((s) => ({ label: s, value: s }));
+  }, [candidates]);
+
+  const filterFields: FilterFieldDefinition[] = useMemo(
+    () => [
+      {
+        id: 'status',
+        label: 'Review Status',
+        type: 'chips',
+        options: [
+          { label: 'All', value: 'ALL' },
+          { label: 'Needs Verification', value: 'Needs Verification' },
+          { label: 'Pending', value: 'Pending' },
+          { label: 'Reviewed', value: 'Reviewed' },
+          { label: 'Dismissed', value: 'Dismissed' },
+        ],
+      },
+      {
+        id: 'risk',
+        label: 'Risk Level',
+        type: 'chips',
+        options: [
+          { label: 'All', value: 'ALL' },
+          { label: 'High', value: 'HIGH' },
+          { label: 'Review Required', value: 'REVIEW REQUIRED' },
+          { label: 'Low', value: 'LOW' },
+        ],
+      },
+      {
+        id: 'subject',
+        label: 'Subject',
+        type: 'select',
+        placeholder: 'All Subjects',
+        options: subjectOptions,
+      },
+      {
+        id: 'reviewer',
+        label: 'Assigned Reviewer',
+        type: 'select',
+        placeholder: 'All Reviewers',
+        options: [
+          { label: 'Chief Examiner', value: 'Chief Examiner' },
+          { label: 'Subject Expert', value: 'Subject Expert' },
+          { label: 'Security Lead', value: 'Security Lead' },
+        ],
+      },
+      {
+        id: 'date',
+        label: 'Date Range',
+        type: 'date-range',
+      },
+    ],
+    [subjectOptions]
+  );
 
   const filteredItems = useMemo(() => {
-    return queueItems.filter(item => {
-      const matchesSearch =
-        item.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.candidateId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.subject.toLowerCase().includes(searchTerm.toLowerCase());
+    return candidates.filter((item) => {
+      if (searchTerm) {
+        const q = searchTerm.toLowerCase();
+        const matches =
+          item.id.toLowerCase().includes(q) ||
+          item.name.toLowerCase().includes(q) ||
+          item.subject.toLowerCase().includes(q) ||
+          (item.subjectCode || '').toLowerCase().includes(q);
+        if (!matches) return false;
+      }
 
-      const matchesStatus = statusFilter === 'ALL' || item.reviewerStatus === statusFilter;
-      const matchesRisk = riskFilter === 'ALL' || item.riskLevel === riskFilter;
+      // Review Status
+      if (filterValues.status && filterValues.status !== 'ALL') {
+        if (item.review !== filterValues.status) return false;
+      }
 
-      return matchesSearch && matchesStatus && matchesRisk;
+      // Risk Level
+      if (filterValues.risk && filterValues.risk !== 'ALL') {
+        if (item.risk !== filterValues.risk) return false;
+      }
+
+      // Subject
+      if (filterValues.subject && filterValues.subject !== 'ALL') {
+        if (item.subject !== filterValues.subject) return false;
+      }
+
+      // Date
+      if (filterValues.dateFrom || filterValues.dateTo) {
+        const itemDateStr = item.uploadedAt || item.detectedTime;
+        if (itemDateStr) {
+          const itemTime = new Date(itemDateStr).getTime();
+          if (filterValues.dateFrom) {
+            const fromTime = new Date(filterValues.dateFrom).getTime();
+            if (itemTime < fromTime) return false;
+          }
+          if (filterValues.dateTo) {
+            const toTime = new Date(filterValues.dateTo).setHours(23, 59, 59, 999);
+            if (itemTime > toTime) return false;
+          }
+        }
+      }
+
+      return true;
     });
-  }, [queueItems, searchTerm, statusFilter, riskFilter]);
+  }, [candidates, searchTerm, filterValues]);
 
-  const handleOpenReview = (item: ReviewItem) => {
-    navigate(`/candidates/${item.candidateId}`);
+  const hasActiveFilters = useMemo(() => {
+    return (
+      searchTerm !== '' ||
+      Object.entries(filterValues).some(([key, val]) => {
+        if (val === undefined || val === null || val === '' || val === 'ALL') {
+          return false;
+        }
+        return true;
+      })
+    );
+  }, [searchTerm, filterValues]);
+
+  const handleClearFilters = () => {
+    setSearchTerm('');
+    setFilterValues(DEFAULT_REVIEW_FILTERS);
+  };
+
+  const getRiskBadge = (risk: string) => {
+    switch (risk) {
+      case 'HIGH':
+        return 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 border border-rose-200 dark:border-rose-900/50';
+      case 'REVIEW REQUIRED':
+        return 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 border border-amber-200 dark:border-amber-900/50';
+      default:
+        return 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900/50';
+    }
+  };
+
+  const getReviewBadge = (review: string) => {
+    switch (review) {
+      case 'Needs Verification':
+      case 'Pending':
+        return 'bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-300 border border-rose-200 dark:border-rose-900/50';
+      case 'Reviewed':
+        return 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900/50';
+      case 'Dismissed':
+      default:
+        return 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 border border-slate-200 dark:border-slate-700';
+    }
   };
 
   return (
     <ResponsiveContainer>
       <PageHeader
-        title="Review Queue"
-        description="Documents requiring human verification."
+        title="Human Review & Verification Queue"
+        description="Prioritized list of detected content awaiting Chief Examiner review and verification against examination papers."
+        action={
+          <Button
+            variant="outline"
+            size="sm"
+            icon={<RefreshCw className="w-4 h-4" />}
+            onClick={fetchQueue}
+          >
+            Refresh Queue
+          </Button>
+        }
       />
 
-      {/* Top Compact Summary */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+      {/* Summary KPI Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <SummaryCard
           title="Needs Verification"
           value={stats.needsVerification}
-          icon={<CircleAlert className="w-6 h-6" />}
-          variant="warning"
-          valueClassName="text-amber-600"
-        />
-        <SummaryCard
-          title="In Review"
-          value={stats.inReview}
-          icon={<UserCheck className="w-6 h-6" />}
-          variant="info"
-          valueClassName="text-blue-600 dark:text-blue-400"
-        />
-        <SummaryCard
-          title="High Risk Queue"
-          value={stats.highRisk}
-          icon={<ShieldAlert className="w-6 h-6" />}
+          icon={<CircleAlert className="w-5 h-5 text-rose-600" />}
           variant="danger"
-          valueClassName="text-rose-600"
+          subtitle={<span className="text-xs text-rose-600">Pending Reviewer Attention</span>}
         />
         <SummaryCard
-          title="Completed"
-          value={stats.completed}
-          icon={<CheckCircle2 className="w-6 h-6" />}
+          title="High Risk Items"
+          value={stats.highRisk}
+          icon={<ShieldAlert className="w-5 h-5 text-amber-600" />}
+          variant="warning"
+          subtitle={<span className="text-xs text-amber-600">Over 75% Risk Score</span>}
+        />
+        <SummaryCard
+          title="Reviewed & Completed"
+          value={stats.reviewed}
+          icon={<CheckCircle2 className="w-5 h-5 text-emerald-600" />}
           variant="success"
-          valueClassName="text-emerald-600 dark:text-emerald-400"
+          subtitle={<span className="text-xs text-emerald-600">Determinations Saved</span>}
+        />
+        <SummaryCard
+          title="Total In Queue"
+          value={stats.total}
+          icon={<ClipboardCheck className="w-5 h-5 text-blue-600" />}
+          variant="info"
+          subtitle={<span className="text-xs text-slate-500">Active Monitored Items</span>}
         />
       </div>
 
-      {/* Filter and Search Bar */}
-      <Card className="mb-6 p-3.5">
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
-          <div className="relative w-full sm:w-80">
+      {/* Compact Search & Single Filter Toolbar */}
+      <Card className="mb-6 p-3">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+          <div className="relative flex-1">
             <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400 pointer-events-none" />
             <input
               type="text"
-              placeholder="Search candidate, subject, ID..."
+              id="search-reviews-input"
+              placeholder="Search reviews by ID, title, or subject..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-400 text-slate-800 dark:text-slate-200"
+              className="w-full pl-9 pr-4 py-2 text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 text-slate-800 dark:text-slate-200"
             />
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-            <Filter className="w-4 h-4 text-slate-400" />
-            <span className="text-xs text-slate-500 font-medium">Status:</span>
-            {['ALL', 'Needs Verification', 'Assigned', 'Completed'].map((st) => (
-              <button
-                key={st}
-                onClick={() => setStatusFilter(st)}
-                className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer ${
-                  statusFilter === st
-                    ? 'bg-slate-200 dark:bg-slate-700 text-slate-900 dark:text-white font-semibold border border-slate-300 dark:border-slate-600'
-                    : 'bg-slate-50 dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 border border-transparent'
-                }`}
-              >
-                {st}
-              </button>
-            ))}
-
-            <span className="text-xs text-slate-500 font-medium ml-2">Risk:</span>
-            {['ALL', 'HIGH', 'REVIEW REQUIRED', 'LOW'].map((rf) => (
-              <button
-                key={rf}
-                onClick={() => setRiskFilter(rf)}
-                className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer ${
-                  riskFilter === rf
-                    ? 'bg-slate-200 dark:bg-slate-700 text-slate-900 dark:text-white font-semibold border border-slate-300 dark:border-slate-600'
-                    : 'bg-slate-50 dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 border border-transparent'
-                }`}
-              >
-                {rf}
-              </button>
-            ))}
+          <div className="flex items-center gap-2 shrink-0">
+            <PageFilterMenu
+              fields={filterFields}
+              values={filterValues}
+              onApply={(newVals) => setFilterValues(newVals)}
+              onReset={() => setFilterValues(DEFAULT_REVIEW_FILTERS)}
+            />
           </div>
         </div>
       </Card>
 
-      {/* Main Table / State */}
-      {loading ? (
-        <Card className="p-12 text-center">
-          <p className="text-xs text-slate-500 font-sans">Loading review queue...</p>
-        </Card>
-      ) : error ? (
-        <Card className="p-12 text-center space-y-3">
-          <p className="text-xs text-rose-600 font-sans">Unable to load review queue.</p>
-          <Button size="sm" variant="outline" onClick={() => setError(false)}>Retry</Button>
-        </Card>
-      ) : filteredItems.length === 0 ? (
-        <Card className="p-12 text-center space-y-2">
-          <CheckCircle2 className="w-10 h-10 text-slate-400 mx-auto" />
-          <p className="text-xs font-semibold text-slate-800 dark:text-slate-200">
-            {searchTerm || statusFilter !== 'ALL' || riskFilter !== 'ALL' ? 'No results match the current filters.' : 'No candidates require review.'}
-          </p>
-        </Card>
-      ) : (
-        <div className="space-y-3 md:space-y-0">
-          {/* Mobile Card List */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:hidden">
-            {filteredItems.map((item) => (
-              <Card key={item.id} className="p-4 space-y-3 font-sans">
-                <div className="flex items-center justify-between">
-                  <span className="font-mono text-xs font-bold text-blue-600 dark:text-blue-400">{item.candidateId}</span>
-                  <span className={`px-2 py-0.5 rounded text-[10px] font-semibold flex items-center gap-1 ${
-                    item.riskLevel === 'HIGH' ? 'bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400' : 'bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400'
-                  }`}>
-                    {item.riskLevel === 'HIGH' ? <ShieldAlert className="w-3 h-3" /> : <CircleAlert className="w-3 h-3" />}
-                    {item.riskLevel}
-                  </span>
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <SubjectIcon subject={item.subject} size={14} />
-                    <p className="text-xs font-semibold text-slate-800 dark:text-slate-200">{item.subject}</p>
-                  </div>
-                  <p className="text-[11px] font-mono text-slate-400 mt-0.5">Detected {item.detectedTime}</p>
-                </div>
-                <div className="flex items-center justify-between pt-1">
-                  <span className="text-[11px] font-medium text-slate-600 dark:text-slate-400">{item.reviewerStatus}</span>
-                  <Button size="sm" variant="primary" onClick={() => handleOpenReview(item)}>
-                    Review
-                  </Button>
-                </div>
-              </Card>
-            ))}
+      {/* Review Queue Table */}
+      <Card>
+        {loading ? (
+          <div className="py-16 text-center space-y-3">
+            <Loader2 className="w-8 h-8 text-blue-600 animate-spin mx-auto" />
+            <p className="text-xs text-slate-500">Loading review queue...</p>
           </div>
-
-          {/* Desktop Table */}
-          <div className="hidden md:block overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
-            <table className="w-full text-left text-xs min-w-[768px] font-sans">
-              <thead>
-                <tr className="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-800 text-slate-500 font-medium">
-                  <th className="px-4 py-3">Candidate</th>
-                  <th className="px-4 py-3">Subject</th>
-                  <th className="px-4 py-3">Risk</th>
-                  <th className="px-4 py-3">Review Status</th>
-                  <th className="px-4 py-3">Detected</th>
-                  <th className="px-4 py-3">Reviewer</th>
-                  <th className="px-4 py-3 text-right">Action</th>
+        ) : filteredItems.length === 0 ? (
+          <div className="py-14 text-center space-y-3">
+            <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto" />
+            <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200">
+              {hasActiveFilters ? 'No review items found' : 'No reviews pending'}
+            </h4>
+            <p className="text-xs text-slate-500 max-w-sm mx-auto">
+              {hasActiveFilters
+                ? 'Try changing or clearing your filters.'
+                : 'All detected content items have completed review.'}
+            </p>
+            {hasActiveFilters && (
+              <Button variant="outline" size="sm" onClick={handleClearFilters}>
+                Clear filters
+              </Button>
+            )}
+          </div>
+        ) : (
+          <div className="overflow-x-auto font-sans">
+            <table className="w-full text-left text-xs font-sans">
+              <thead className="bg-slate-50 dark:bg-slate-900/60 text-slate-500 font-sans border-b border-slate-200 dark:border-slate-800">
+                <tr>
+                  <th className="py-3 px-4 font-semibold">Content Item & ID</th>
+                  <th className="py-3 px-4 font-semibold">Subject & Code</th>
+                  <th className="py-3 px-4 font-semibold">Calculated Risk</th>
+                  <th className="py-3 px-4 font-semibold">Confidence</th>
+                  <th className="py-3 px-4 font-semibold">Parsed Blocks</th>
+                  <th className="py-3 px-4 font-semibold">Review Status</th>
+                  <th className="py-3 px-4 font-semibold text-right">Action</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {filteredItems.map((item) => (
-                  <tr key={item.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
-                    <td className="px-4 py-3.5 font-mono font-medium text-blue-600 dark:text-blue-400">
-                      {item.candidateId}
-                    </td>
-                    <td className="px-4 py-3.5">
-                      <div className="flex items-center gap-1.5 font-medium text-slate-900 dark:text-slate-100">
-                        <SubjectIcon subject={item.subject} size={14} />
-                        <span className="truncate max-w-[200px]">{item.subject}</span>
+                  <tr
+                    key={item.id}
+                    className="hover:bg-slate-50/50 dark:hover:bg-slate-900/40 transition-colors"
+                  >
+                    <td className="py-3 px-4">
+                      <div className="font-semibold text-slate-900 dark:text-slate-100 truncate max-w-[200px]">
+                        {item.name}
+                      </div>
+                      <div className="font-mono text-[11px] text-blue-600 dark:text-blue-400">
+                        {item.id}
                       </div>
                     </td>
-                    <td className="px-4 py-3.5">
-                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold ${
-                        item.riskLevel === 'HIGH' ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300' :
-                        item.riskLevel === 'REVIEW REQUIRED' ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300' :
-                        'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300'
-                      }`}>
-                        {item.riskLevel === 'HIGH' ? <ShieldAlert className="w-3 h-3" /> : <CircleAlert className="w-3 h-3" />}
-                        {item.riskLevel}
-                      </span>
+
+                    <td className="py-3 px-4">
+                      <div className="flex items-center gap-1.5 font-medium text-slate-800 dark:text-slate-200">
+                        <SubjectIcon subject={item.subject} size={14} className="shrink-0" />
+                        <span>{item.subject}</span>
+                      </div>
+                      <div className="text-[11px] text-slate-400 font-mono">{item.subjectCode}</div>
                     </td>
-                    <td className="px-4 py-3.5">
-                      <span className={`px-2 py-0.5 rounded text-[11px] font-medium ${
-                        item.reviewerStatus === 'Needs Verification' ? 'bg-amber-50 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300' :
-                        item.reviewerStatus === 'Assigned' ? 'bg-blue-50 text-blue-800 dark:bg-blue-950/50 dark:text-blue-300' :
-                        'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300'
-                      }`}>
-                        {item.reviewerStatus}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3.5 font-mono text-slate-500 whitespace-nowrap">
-                      {item.detectedTime}
-                    </td>
-                    <td className="px-4 py-3.5 text-slate-600 dark:text-slate-400">
-                      {item.assignedReviewer || '—'}
-                    </td>
-                    <td className="px-4 py-3.5 text-right">
-                      <Button
-                        size="sm"
-                        variant="primary"
-                        onClick={() => handleOpenReview(item)}
+
+                    <td className="py-3 px-4">
+                      <span
+                        className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${getRiskBadge(
+                          item.risk
+                        )}`}
                       >
-                        Review
+                        {item.risk === 'HIGH' && <ShieldAlert className="w-3 h-3 text-rose-500" />}
+                        {item.risk} ({item.riskScore}/100)
+                      </span>
+                    </td>
+
+                    <td className="py-3 px-4 font-mono font-semibold text-slate-900 dark:text-slate-100">
+                      {item.confidence}%
+                    </td>
+
+                    <td className="py-3 px-4 text-slate-600 dark:text-slate-300">
+                      {item.questions?.length || 0} questions
+                    </td>
+
+                    <td className="py-3 px-4">
+                      <span
+                        className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-medium ${getReviewBadge(
+                          item.review
+                        )}`}
+                      >
+                        {item.review}
+                      </span>
+                    </td>
+
+                    <td className="py-3 px-4 text-right">
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        onClick={() => navigate(`/detected-content/${item.id}`)}
+                      >
+                        Review Item <ArrowUpRight className="w-3.5 h-3.5 ml-1" />
                       </Button>
                     </td>
                   </tr>
@@ -313,8 +387,8 @@ export const ReviewQueuePage: React.FC = () => {
               </tbody>
             </table>
           </div>
-        </div>
-      )}
+        )}
+      </Card>
     </ResponsiveContainer>
   );
 };

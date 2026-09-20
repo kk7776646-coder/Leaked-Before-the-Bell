@@ -20,7 +20,7 @@ export const ReviewDecisionPanel: React.FC<ReviewDecisionPanelProps> = ({
     { id: 'Mark as Reviewed', label: 'Verify Leak & Mark Reviewed', icon: <ClipboardCheck className="w-4 h-4 text-rose-500" />, color: 'hover:border-rose-500' },
     { id: 'Needs More Evidence', label: 'Request Deeper Evidence', icon: <AlertTriangle className="w-4 h-4 text-amber-500" />, color: 'hover:border-amber-500' },
     { id: 'Escalate', label: 'Escalate to Board Committee', icon: <ArrowUpRight className="w-4 h-4 text-purple-500" />, color: 'hover:border-purple-500' },
-    { id: 'Dismiss Candidate', label: 'Dismiss False Positive', icon: <XCircle className="w-4 h-4 text-slate-400" />, color: 'hover:border-slate-500' },
+    { id: 'Dismiss Item', label: 'Dismiss False Positive', icon: <XCircle className="w-4 h-4 text-slate-400" />, color: 'hover:border-slate-500' },
   ];
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -50,10 +50,10 @@ export const ReviewDecisionPanel: React.FC<ReviewDecisionPanelProps> = ({
                   type="button"
                   key={d.id}
                   onClick={() => setSelectedDecision(d.id)}
-                  className={`p-3 rounded-xl border flex items-center gap-2.5 font-medium text-left transition-all cursor-pointer ${
+                  className={`p-3 rounded-xl border flex items-center gap-2.5 font-medium text-left transition-all duration-150 active:scale-[0.98] cursor-pointer select-none ${
                     isSelected
                       ? 'border-slate-400 dark:border-slate-600 bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white font-semibold shadow-xs'
-                      : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                      : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/50 hover:border-slate-300 dark:hover:border-slate-700'
                   }`}
                 >
                   {d.icon}

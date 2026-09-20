@@ -1,11 +1,20 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @layer base {
   :root {
     --background: #f8fafc;
+    --foreground: #0f172a;
     --surface: #ffffff;
     --surface-secondary: #f1f5f9;
+    --card: #ffffff;
+    --card-foreground: #0f172a;
     --border: #e2e8f0;
+    --muted: #f1f5f9;
+    --muted-foreground: #64748b;
+    --primary: #2563eb;
+    --primary-foreground: #ffffff;
     --text-primary: #0f172a;
     --text-secondary: #475569;
     --text-muted: #64748b;
@@ -17,16 +26,21 @@
     --warning: #f59e0b;
     --error: #ef4444;
 
+    /* Global Interaction Tokens */
+    --interaction-duration-fast: 120ms;
+    --interaction-duration-normal: 160ms;
+    --interaction-duration-slow: 180ms;
+
     --font-primary: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     --font-mono: 'JetBrains Mono', monospace;
 
-    /* Semantic Sidebar Variables - Light Theme */
+    /* Semantic Sidebar Variables - Clean Light Theme */
     --sidebar-background: #ffffff;
     --sidebar-foreground: #0f172a;
     --sidebar-border: #e2e8f0;
     --sidebar-hover: #f1f5f9;
-    --sidebar-active: #2563eb;
-    --sidebar-active-foreground: #ffffff;
+    --sidebar-active: #f1f5f9;
+    --sidebar-active-foreground: #0f172a;
     --sidebar-muted: #64748b;
 
     /* Legacy fallback variables */
@@ -40,9 +54,16 @@
 
   .dark {
     --background: #090d16;
+    --foreground: #f8fafc;
     --surface: #0f172a;
     --surface-secondary: #1e293b;
+    --card: #0f172a;
+    --card-foreground: #f8fafc;
     --border: #1e293b;
+    --muted: #1e293b;
+    --muted-foreground: #94a3b8;
+    --primary: #3b82f6;
+    --primary-foreground: #ffffff;
     --text-primary: #f8fafc;
     --text-secondary: #94a3b8;
     --text-muted: #64748b;
@@ -54,13 +75,13 @@
     --warning: #fbbf24;
     --error: #f87171;
 
-    /* Semantic Sidebar Variables - Dark Theme */
+    /* Semantic Sidebar Variables - Clean Dark Theme */
     --sidebar-background: #0f172a;
     --sidebar-foreground: #f8fafc;
     --sidebar-border: #1e293b;
     --sidebar-hover: #1e293b;
-    --sidebar-active: #2563eb;
-    --sidebar-active-foreground: #ffffff;
+    --sidebar-active: #1e293b;
+    --sidebar-active-foreground: #f8fafc;
     --sidebar-muted: #64748b;
 
     /* Legacy fallback variables */
@@ -76,7 +97,25 @@
     background-color: var(--background);
     color: var(--text-primary);
     font-family: var(--font-primary);
-    transition: background-color 0.2s ease, color 0.2s ease;
+    transition: background-color 0.16s ease, color 0.16s ease;
+  }
+
+  /* Prevent ugly default browser outlines on mouse click while preserving keyboard accessibility */
+  button:focus,
+  a:focus,
+  input:focus,
+  select:focus,
+  textarea:focus {
+    outline: none;
+  }
+
+  button:focus-visible,
+  a:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible {
+    outline: 2px solid rgba(59, 130, 246, 0.4);
+    outline-offset: 1px;
   }
 
   h1, h2, h3, h4, h5, h6, .font-heading, .font-display {

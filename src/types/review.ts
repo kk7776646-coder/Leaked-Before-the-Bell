@@ -1,6 +1,6 @@
 export type ReviewRiskLevel = 'HIGH' | 'MEDIUM' | 'LOW' | 'REVIEW REQUIRED';
 export type ReviewerStatus = 'Needs Verification' | 'In Review' | 'Completed' | 'Assigned';
-export type ReviewDecision = 'APPROVED' | 'REJECTED' | 'ESCALATED' | 'Mark as Reviewed' | 'Needs More Evidence' | 'Escalate' | 'Dismiss Candidate';
+export type ReviewDecision = 'APPROVED' | 'REJECTED' | 'ESCALATED' | 'Mark as Reviewed' | 'Needs More Evidence' | 'Escalate' | 'Dismiss Candidate' | 'Dismiss Item';
 
 export interface ReviewItem {
   id: string;

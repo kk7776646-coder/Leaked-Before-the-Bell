@@ -29,7 +29,7 @@ export const MobileNavigation: React.FC<MobileNavigationProps> = ({ isOpen, onCl
     {
       title: 'MONITORING',
       items: [
-        { to: '/candidates', label: 'Candidates', icon: FileSearch },
+        { to: '/candidates', label: 'Detected Content', icon: FileSearch },
         { to: '/alerts', label: 'Alerts', icon: ShieldAlert },
         { to: '/review', label: 'Review Queue', icon: CheckSquare },
         { to: '/sources', label: 'Social Media (Auto)', icon: Bell },
@@ -39,7 +39,7 @@ export const MobileNavigation: React.FC<MobileNavigationProps> = ({ isOpen, onCl
       title: 'KNOWLEDGE BASE',
       items: [
         { to: '/historical', label: 'Historical Data', icon: Database },
-        { to: '/real-papers', label: 'Real Papers', icon: FileCheck },
+        { to: '/real-papers', label: 'Verified Papers', icon: FileCheck },
       ],
     },
     {
