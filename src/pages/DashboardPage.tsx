@@ -18,12 +18,12 @@ export const DashboardPage: React.FC = () => {
     <ResponsiveContainer>
       <PageHeader
         title="Dashboard"
-        description="Monitor candidates, alerts, and review activity."
+        description="Monitor detected question items, alerts, and review activity."
         action={
           <div className="flex items-center gap-2">
             <Link to="/candidates">
               <Button variant="primary" icon={<FileSearch className="w-4 h-4" />}>
-                View Candidates
+                View Detected Items
               </Button>
             </Link>
           </div>
@@ -33,7 +33,7 @@ export const DashboardPage: React.FC = () => {
       {/* Top Stat Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <SummaryCard
-          title="Candidates Processed (24h)"
+          title="Detected Items Processed (24h)"
           value={mockDashboardStats.scannedToday.toLocaleString()}
           icon={<Activity className="w-6 h-6" />}
           variant="info"
@@ -129,10 +129,10 @@ export const DashboardPage: React.FC = () => {
             </div>
           </Card>
 
-          {/* Recent Flagged Candidate Papers */}
+          {/* Recent Flagged Detected Items */}
           <Card
-            title="Recent Flagged Candidate Papers"
-            subtitle="Papers flagged by paper comparison exceeding similarity thresholds"
+            title="Recent Flagged Detected Items"
+            subtitle="Question papers and documents flagged by comparison exceeding similarity thresholds"
           >
             <div className="divide-y divide-slate-100 dark:divide-slate-800 font-sans">
               {[

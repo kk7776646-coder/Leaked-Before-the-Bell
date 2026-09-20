@@ -1,0 +1,26 @@
+export const mockExamMetadata = [
+  {
+    id: 'EX-01',
+    subjectCode: 'PHYS-101',
+    subject: 'Advanced Physics Set A',
+    examDate: '2026-10-12',
+    session: 'Morning',
+    maxMarks: 100,
+    duration: '3 Hours',
+    examType: 'Theoretical & Numerical',
+    chiefExaminer: 'Dr. R. K. Verma',
+    status: 'Scheduled',
+  },
+  {
+    id: 'EX-02',
+    subjectCode: 'CHEM-202',
+    subject: 'Organic Chemistry',
+    examDate: '2026-10-13',
+    session: 'Afternoon',
+    maxMarks: 100,
+    duration: '3 Hours',
+    examType: 'Analytical',
+    chiefExaminer: 'Prof. S. N. Roy',
+    status: 'Scheduled',
+  },
+];

@@ -30,7 +30,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, onToggle }) => {
     {
       title: 'MONITORING',
       items: [
-        { to: '/candidates', label: 'Candidates', icon: FileSearch },
+        { to: '/candidates', label: 'Detected Items', icon: FileSearch },
         { to: '/alerts', label: 'Alerts', icon: ShieldAlert },
         { to: '/review', label: 'Review Queue', icon: CheckSquare },
         { to: '/sources', label: 'Social Media (Auto)', icon: Bell },

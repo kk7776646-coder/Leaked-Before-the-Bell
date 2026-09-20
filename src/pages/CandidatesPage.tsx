@@ -31,8 +31,8 @@ export const CandidatesPage: React.FC = () => {
   return (
     <ResponsiveContainer>
       <PageHeader
-        title="Candidate Papers"
-        description="AI OCR scanned candidate submissions and pre-market leaked documents analyzed against historical secure exam vaults."
+        title="Detected Items"
+        description="Publicly accessible and authorized social sources monitored for viral exam-question content, screenshots, PDFs, and question papers analyzed against historical and verified exam vaults."
         action={
           <Button variant="primary" icon={<Upload className="w-4 h-4" />}>
             Upload New Paper
@@ -78,7 +78,7 @@ export const CandidatesPage: React.FC = () => {
           <table className="w-full text-left text-xs font-sans">
             <thead className="bg-slate-50 dark:bg-slate-900/60 text-slate-500 font-sans border-b border-slate-200 dark:border-slate-800">
               <tr>
-                <th className="py-3 px-4 font-semibold">Candidate ID</th>
+                <th className="py-3 px-4 font-semibold">Detection ID</th>
                 <th className="py-3 px-4 font-semibold">Document Name</th>
                 <th className="py-3 px-4 font-semibold">Subject</th>
                 <th className="py-3 px-4 font-semibold">Platform Source</th>

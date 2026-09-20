@@ -29,14 +29,14 @@ export const CandidateDetailsPage: React.FC = () => {
       <div className="mb-4">
         <Link to="/candidates">
           <Button variant="outline" size="sm" icon={<ArrowLeft className="w-4 h-4" />}>
-            Back to Candidates
+            Back to Detected Items
           </Button>
         </Link>
       </div>
 
       <PageHeader
-        title={`Candidate Investigation: ${candidateId}`}
-        description="Candidate document forensics and human verification workspace."
+        title={`Detected Item Investigation: ${candidateId}`}
+        description="Detected item document forensics and human verification workspace."
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 font-sans">

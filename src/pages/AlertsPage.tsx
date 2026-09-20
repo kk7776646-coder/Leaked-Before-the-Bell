@@ -34,8 +34,8 @@ export const AlertsPage: React.FC = () => {
       const matchesSearch = 
         a.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
         a.candidateId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        a.subject.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        a.reason.toLowerCase().includes(searchTerm.toLowerCase());
+        (a.subject || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (a.reason || '').toLowerCase().includes(searchTerm.toLowerCase());
       
       const matchesRisk = riskFilter === 'ALL' || a.severity === riskFilter;
       const matchesStatus = statusFilter === 'ALL' || a.status === statusFilter;
