@@ -19,14 +19,16 @@ import {
   Sparkles,
   FlaskConical,
   Users,
+  User,
 } from 'lucide-react';
 import { useTheme, ThemeMode } from '../hooks/useTheme';
 import { useAuth } from '../context/AuthContext';
 import { AiAssistantSettingsSection } from '../components/settings/AiAssistantSettingsSection';
 import { TestDataSettingsSection } from '../components/settings/TestDataSettingsSection';
 import { UserManagementSection } from '../components/settings/UserManagementSection';
+import { ProfileSettingsSection } from '../components/settings/ProfileSettingsSection';
 
-type SettingsTab = 'test-data' | 'ai-assistant' | 'appearance' | 'examination' | 'notifications' | 'user-management';
+type SettingsTab = 'profile' | 'test-data' | 'ai-assistant' | 'appearance' | 'examination' | 'notifications' | 'user-management';
 
 export const SettingsPage: React.FC = () => {
   const { theme, setTheme, resolvedTheme } = useTheme();
@@ -35,12 +37,13 @@ export const SettingsPage: React.FC = () => {
 
   const [searchParams, setSearchParams] = useSearchParams();
   const tabParam = searchParams.get('tab') as SettingsTab | null;
-  const [activeTab, setActiveTab] = useState<SettingsTab>(tabParam || 'test-data');
+  const [activeTab, setActiveTab] = useState<SettingsTab>(tabParam || 'profile');
 
   useEffect(() => {
     if (
       tabParam &&
-      (tabParam === 'test-data' ||
+      (tabParam === 'profile' ||
+        tabParam === 'test-data' ||
         tabParam === 'ai-assistant' ||
         tabParam === 'appearance' ||
         tabParam === 'examination' ||
@@ -80,14 +83,24 @@ export const SettingsPage: React.FC = () => {
   return (
     <ResponsiveContainer>
       <PageHeader
-        title={activeTab === 'test-data' ? 'Test Data' : 'Settings'}
+        title={
+          activeTab === 'profile'
+            ? 'My Profile & Avatar'
+            : activeTab === 'test-data'
+            ? 'Test Data'
+            : 'Settings'
+        }
         description={
-          activeTab === 'test-data'
+          activeTab === 'profile'
+            ? 'Manage your authenticated account identity, contact details, and custom avatar photo.'
+            : activeTab === 'test-data'
             ? 'Create controlled test documents to validate upload, document processing, comparison, alerts and review workflows.'
             : 'Configure system preferences, AI Assistant LLM providers, and security policies.'
         }
         breadcrumb={
-          activeTab === 'test-data'
+          activeTab === 'profile'
+            ? 'Settings → My Profile'
+            : activeTab === 'test-data'
             ? 'Settings → Test Data'
             : activeTab === 'ai-assistant'
             ? 'Settings → AI Assistant'
@@ -98,84 +111,99 @@ export const SettingsPage: React.FC = () => {
       />
 
       {/* Settings Tab Navigation */}
-      <div className="flex items-center gap-1 border-b border-slate-200 dark:border-slate-800 mb-6 overflow-x-auto pb-px">
+      <div className="flex items-center gap-1.5 border-b border-slate-200 dark:border-slate-800 pb-2.5 mb-6 overflow-x-auto no-scrollbar">
+        <button
+          type="button"
+          onClick={() => handleTabChange('profile')}
+          className={`px-3.5 py-2.5 text-xs font-semibold rounded-xl border flex items-center gap-2 cursor-pointer shrink-0 transition-all duration-300 ${
+            activeTab === 'profile'
+              ? 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white border-slate-200/90 dark:border-slate-700 shadow-[0_4px_12px_rgba(148,163,184,0.12)] dark:shadow-[0_4px_12px_rgba(2,6,23,0.4)]'
+              : 'border-transparent text-slate-500 dark:text-slate-400 hover:bg-slate-50/90 dark:hover:bg-slate-800/40 hover:text-slate-800 dark:hover:text-slate-200 hover:border-slate-200/60 dark:hover:border-slate-800/60 hover:shadow-[0_4px_12px_rgba(148,163,184,0.08)] dark:hover:shadow-[0_4px_12px_rgba(2,6,23,0.2)]'
+          }`}
+        >
+          <User className="w-3.5 h-3.5 shrink-0" />
+          <span>My Profile</span>
+        </button>
         <button
           type="button"
           onClick={() => handleTabChange('test-data')}
-          className={`px-4 py-2.5 text-xs font-semibold rounded-t-lg transition-all border-b-2 flex items-center gap-2 cursor-pointer shrink-0 ${
+          className={`px-3.5 py-2.5 text-xs font-semibold rounded-xl border flex items-center gap-2 cursor-pointer shrink-0 transition-all duration-300 ${
             activeTab === 'test-data'
-              ? 'border-blue-600 text-blue-600 dark:text-blue-400 bg-blue-50/40 dark:bg-blue-950/20'
-              : 'border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:border-slate-300'
+              ? 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white border-slate-200/90 dark:border-slate-700 shadow-[0_4px_12px_rgba(148,163,184,0.12)] dark:shadow-[0_4px_12px_rgba(2,6,23,0.4)]'
+              : 'border-transparent text-slate-500 dark:text-slate-400 hover:bg-slate-50/90 dark:hover:bg-slate-800/40 hover:text-slate-800 dark:hover:text-slate-200 hover:border-slate-200/60 dark:hover:border-slate-800/60 hover:shadow-[0_4px_12px_rgba(148,163,184,0.08)] dark:hover:shadow-[0_4px_12px_rgba(2,6,23,0.2)]'
           }`}
         >
-          <FlaskConical className="w-3.5 h-3.5" />
+          <FlaskConical className="w-3.5 h-3.5 shrink-0" />
           <span>Test Data</span>
         </button>
         <button
           type="button"
           onClick={() => handleTabChange('ai-assistant')}
-          className={`px-4 py-2.5 text-xs font-semibold rounded-t-lg transition-all border-b-2 flex items-center gap-2 cursor-pointer shrink-0 ${
+          className={`px-3.5 py-2.5 text-xs font-semibold rounded-xl border flex items-center gap-2 cursor-pointer shrink-0 transition-all duration-300 ${
             activeTab === 'ai-assistant'
-              ? 'border-blue-600 text-blue-600 dark:text-blue-400 bg-blue-50/40 dark:bg-blue-950/20'
-              : 'border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:border-slate-300'
+              ? 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white border-slate-200/90 dark:border-slate-700 shadow-[0_4px_12px_rgba(148,163,184,0.12)] dark:shadow-[0_4px_12px_rgba(2,6,23,0.4)]'
+              : 'border-transparent text-slate-500 dark:text-slate-400 hover:bg-slate-50/90 dark:hover:bg-slate-800/40 hover:text-slate-800 dark:hover:text-slate-200 hover:border-slate-200/60 dark:hover:border-slate-800/60 hover:shadow-[0_4px_12px_rgba(148,163,184,0.08)] dark:hover:shadow-[0_4px_12px_rgba(2,6,23,0.2)]'
           }`}
         >
-          <Bot className="w-3.5 h-3.5" />
+          <Bot className="w-3.5 h-3.5 shrink-0" />
           <span>AI Assistant</span>
         </button>
         <button
           type="button"
           onClick={() => handleTabChange('appearance')}
-          className={`px-4 py-2.5 text-xs font-semibold rounded-t-lg transition-all border-b-2 flex items-center gap-2 cursor-pointer shrink-0 ${
+          className={`px-3.5 py-2.5 text-xs font-semibold rounded-xl border flex items-center gap-2 cursor-pointer shrink-0 transition-all duration-300 ${
             activeTab === 'appearance'
-              ? 'border-blue-600 text-blue-600 dark:text-blue-400 bg-blue-50/40 dark:bg-blue-950/20'
-              : 'border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:border-slate-300'
+              ? 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white border-slate-200/90 dark:border-slate-700 shadow-[0_4px_12px_rgba(148,163,184,0.12)] dark:shadow-[0_4px_12px_rgba(2,6,23,0.4)]'
+              : 'border-transparent text-slate-500 dark:text-slate-400 hover:bg-slate-50/90 dark:hover:bg-slate-800/40 hover:text-slate-800 dark:hover:text-slate-200 hover:border-slate-200/60 dark:hover:border-slate-800/60 hover:shadow-[0_4px_12px_rgba(148,163,184,0.08)] dark:hover:shadow-[0_4px_12px_rgba(2,6,23,0.2)]'
           }`}
         >
-          <Sun className="w-3.5 h-3.5" />
+          <Sun className="w-3.5 h-3.5 shrink-0" />
           <span>Appearance & Theme</span>
         </button>
         <button
           type="button"
           onClick={() => handleTabChange('examination')}
-          className={`px-4 py-2.5 text-xs font-semibold rounded-t-lg transition-all border-b-2 flex items-center gap-2 cursor-pointer shrink-0 ${
+          className={`px-3.5 py-2.5 text-xs font-semibold rounded-xl border flex items-center gap-2 cursor-pointer shrink-0 transition-all duration-300 ${
             activeTab === 'examination'
-              ? 'border-blue-600 text-blue-600 dark:text-blue-400 bg-blue-50/40 dark:bg-blue-950/20'
-              : 'border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:border-slate-300'
+              ? 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white border-slate-200/90 dark:border-slate-700 shadow-[0_4px_12px_rgba(148,163,184,0.12)] dark:shadow-[0_4px_12px_rgba(2,6,23,0.4)]'
+              : 'border-transparent text-slate-500 dark:text-slate-400 hover:bg-slate-50/90 dark:hover:bg-slate-800/40 hover:text-slate-800 dark:hover:text-slate-200 hover:border-slate-200/60 dark:hover:border-slate-800/60 hover:shadow-[0_4px_12px_rgba(148,163,184,0.08)] dark:hover:shadow-[0_4px_12px_rgba(2,6,23,0.2)]'
           }`}
         >
-          <Sliders className="w-3.5 h-3.5" />
+          <Sliders className="w-3.5 h-3.5 shrink-0" />
           <span>Examination Policies</span>
         </button>
         <button
           type="button"
           onClick={() => handleTabChange('notifications')}
-          className={`px-4 py-2.5 text-xs font-semibold rounded-t-lg transition-all border-b-2 flex items-center gap-2 cursor-pointer shrink-0 ${
+          className={`px-3.5 py-2.5 text-xs font-semibold rounded-xl border flex items-center gap-2 cursor-pointer shrink-0 transition-all duration-300 ${
             activeTab === 'notifications'
-              ? 'border-blue-600 text-blue-600 dark:text-blue-400 bg-blue-50/40 dark:bg-blue-950/20'
-              : 'border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:border-slate-300'
+              ? 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white border-slate-200/90 dark:border-slate-700 shadow-[0_4px_12px_rgba(148,163,184,0.12)] dark:shadow-[0_4px_12px_rgba(2,6,23,0.4)]'
+              : 'border-transparent text-slate-500 dark:text-slate-400 hover:bg-slate-50/90 dark:hover:bg-slate-800/40 hover:text-slate-800 dark:hover:text-slate-200 hover:border-slate-200/60 dark:hover:border-slate-800/60 hover:shadow-[0_4px_12px_rgba(148,163,184,0.08)] dark:hover:shadow-[0_4px_12px_rgba(2,6,23,0.2)]'
           }`}
         >
-          <Bell className="w-3.5 h-3.5" />
+          <Bell className="w-3.5 h-3.5 shrink-0" />
           <span>Notifications & Alerts</span>
         </button>
         {isAdmin && (
           <button
             type="button"
             onClick={() => handleTabChange('user-management')}
-            className={`px-4 py-2.5 text-xs font-semibold rounded-t-lg transition-all border-b-2 flex items-center gap-2 cursor-pointer shrink-0 ${
+            className={`px-3.5 py-2.5 text-xs font-semibold rounded-xl border flex items-center gap-2 cursor-pointer shrink-0 transition-all duration-300 ${
               activeTab === 'user-management'
-                ? 'border-blue-600 text-blue-600 dark:text-blue-400 bg-blue-50/40 dark:bg-blue-950/20'
-                : 'border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:border-slate-300'
+                ? 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white border-slate-200/90 dark:border-slate-700 shadow-[0_4px_12px_rgba(148,163,184,0.12)] dark:shadow-[0_4px_12px_rgba(2,6,23,0.4)]'
+                : 'border-transparent text-slate-500 dark:text-slate-400 hover:bg-slate-50/90 dark:hover:bg-slate-800/40 hover:text-slate-800 dark:hover:text-slate-200 hover:border-slate-200/60 dark:hover:border-slate-800/60 hover:shadow-[0_4px_12px_rgba(148,163,184,0.08)] dark:hover:shadow-[0_4px_12px_rgba(2,6,23,0.2)]'
             }`}
           >
-            <Users className="w-3.5 h-3.5" />
+            <Users className="w-3.5 h-3.5 shrink-0" />
             <span>User Management</span>
           </button>
         )}
       </div>
 
       <div className="space-y-6 max-w-4xl">
+        {/* TAB: Profile */}
+        {activeTab === 'profile' && <ProfileSettingsSection />}
+
         {/* TAB 0: Test Data */}
         {activeTab === 'test-data' && <TestDataSettingsSection />}
 
@@ -204,10 +232,10 @@ export const SettingsPage: React.FC = () => {
                       key={opt.mode}
                       type="button"
                       onClick={() => setTheme(opt.mode)}
-                      className={`text-left p-4 rounded-xl border transition-all duration-150 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 relative group ${
+                      className={`text-left p-4 rounded-xl border transition-all duration-300 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 relative group ${
                         isSelected
                           ? 'bg-slate-100 dark:bg-slate-800/90 border-slate-300 dark:border-slate-600 shadow-xs'
-                          : 'bg-white dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 hover:bg-slate-50/80 dark:hover:bg-slate-800/40 hover:border-slate-300 dark:hover:border-slate-700'
+                          : 'bg-white dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 hover:bg-slate-50/80 dark:hover:bg-slate-800/40 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-[0_12px_30px_rgba(148,163,184,0.18)] dark:hover:shadow-[0_12px_30px_rgba(2,6,23,0.4)] hover:-translate-y-0.5'
                       }`}
                     >
                       <div className="flex items-center justify-between mb-2.5">

@@ -310,7 +310,8 @@ export class AiAssistantService {
    */
   public static handleDeterministicQuery(
     query: string,
-    ctx?: AiAssistantContext
+    ctx?: AiAssistantContext,
+    providerEnabled = false
   ): {
     handled: boolean;
     response?: AiChatMessage;
@@ -375,8 +376,17 @@ export class AiAssistantService {
       }
     }
 
-    // 3. High risk query
-    if (q.includes('high risk') || q.includes("today's high-risk") || q.includes('high-risk content')) {
+    // 3. High risk query (multilingual support)
+    if (
+      q.includes('high risk') ||
+      q.includes("today's high-risk") ||
+      q.includes('high-risk content') ||
+      q.includes('critical leaks') ||
+      q.includes('highest risk') ||
+      q.includes('खतरनाक लीक') ||
+      q.includes('धोकादायक') ||
+      q.includes('जोखिम')
+    ) {
       const highRisk = db.getDetectedContents({ risk: 'HIGH', status: 'ACTIVE' });
       const actions: AiSuggestedAction[] = highRisk.slice(0, 4).map((item) => ({
         id: `act-${item.id}`,
@@ -564,8 +574,21 @@ export class AiAssistantService {
       };
     }
 
-    // 6. Dashboard metrics query
-    if (q.includes('dashboard') || q.includes('system status') || q.includes('monitoring status') || q.includes('recent leak detections') || q.includes('scanned today')) {
+    // 6. Dashboard metrics / Security Summary query (multilingual support)
+    if (
+      q.includes('dashboard') ||
+      q.includes('system status') ||
+      q.includes('monitoring status') ||
+      q.includes('recent leak detections') ||
+      q.includes('scanned today') ||
+      q.includes('security summary') ||
+      q.includes('overall status') ||
+      q.includes('today\'s monitoring summary') ||
+      q.includes('alert summary') ||
+      q.includes('सिस्टम स्थिति') ||
+      q.includes('देखरेख') ||
+      q.includes('सुरक्षा सारांश')
+    ) {
       const stats = db.getDashboardStats();
       const bullets = [
         `Scanned Today: ${stats.scannedToday} documents (${stats.scannedTotal} total in repository)`,
@@ -580,7 +603,7 @@ export class AiAssistantService {
         response: {
           id: `msg-${Date.now()}`,
           role: 'assistant',
-          content: `Here is the current **LeakLens System & Monitoring Status**:\n\nSystem is actively monitoring all social channels with **${stats.activeAlerts} active alerts** and **${stats.pendingReviews} reviews pending**.`,
+          content: `Here is the current **LeakLens System & Monitoring Status**:\n\nSystem is actively monitoring all social channels with **${stats.activeAlerts} active alerts** and **${stats.pendingReviews} reviews pending**.\n\n*All statistics reflect live records in the secure exam vault.*`,
           timestamp: new Date().toISOString(),
           evidenceBullets: bullets,
           suggestedActions: [
@@ -691,6 +714,257 @@ export class AiAssistantService {
       }
     }
 
+    // ==========================================
+    // DETAILED OFFLINE/DETERMINISTIC INTENTS
+    // ==========================================
+
+    // 10. Help / Capabilities
+    if (
+      !providerEnabled && (
+        q.includes('help') ||
+        q.includes('what can you do') ||
+        q.includes('capabilities') ||
+        q.includes('features') ||
+        q.includes('commands') ||
+        q.includes('how to use') ||
+        q.includes('मदत') ||
+        q.includes('सहायता')
+      )
+    ) {
+      return {
+        handled: true,
+        response: {
+          id: `msg-${Date.now()}`,
+          role: 'assistant',
+          content: `### LeakLens Assistant Capabilities
+
+As an integrated security intelligence analyst, I can help you with:
+
+1. **Active Alert Monitoring**: Check overall alerts by asking 'show active alerts' or 'system status'.
+2. **High-Risk Assessments**: Find immediate threats by asking 'show today's high risk content'.
+3. **Document Explanations**: Select any document or alert, then ask 'why was this flagged?' or 'compare questions' to inspect forensic overlaps.
+4. **Operations Guidance**: Get instructions on uploading materials ('how to upload') or user accounts ('user management').
+5. **Interactive Actions**: Initiate actions like 'delete this document' directly via the chat.
+
+*Configure models under **Settings → AI Assistant** for semantic reasoning and full conversational capability.*`,
+          timestamp: new Date().toISOString(),
+          evidenceBullets: [
+            'Deterministic database lookup is fully active',
+            'All administrative role actions are securely logged in Audit Trails',
+          ],
+          suggestedActions: [
+            {
+              id: 'act-settings',
+              label: 'Configure AI Assistant',
+              actionType: 'NAVIGATE',
+              payload: { path: '/settings' },
+            },
+          ],
+        },
+      };
+    }
+
+    // 11. Upload / Ingestion Guide (Multilingual: Hindi/Hinglish/Marathi)
+    if (
+      q.includes('upload') ||
+      q.includes('how to upload') ||
+      q.includes('how can i upload') ||
+      q.includes('verified paper kaise') ||
+      q.includes('kaise upload') ||
+      q.includes('kasa upload') ||
+      q.includes('kase upload') ||
+      q.includes('अपलोड')
+    ) {
+      const contentText = `### Ingestion & Upload Guide
+
+LeakLens provides secure, role-restricted upload pipelines for indexing reference materials and scanning suspected leak sources:
+
+1. **Verified Real Papers (Exam Vault)**:
+   - Go to the **Real Papers** page.
+   - Click **Upload Verified Paper** or use the drag-and-drop interface.
+   - Files are stored with SHA-256 integrity verification, and extracted question text is instantly tokenized for forensic matching.
+
+2. **Historical Indexed Papers (Archives)**:
+   - Go to the **Historical Papers** page.
+   - Click **Upload Historical Paper** to batch-index previous semesters.
+
+3. **Suspected Leak Candidates (Social Monitoring)**:
+   - Go to **Detected Content** or **Candidates**.
+   - Click **Upload Candidate / Screen Capture**.
+   - The document processing pipeline runs OCR extraction and compares the questions against the Exam Vault.
+
+*Note: Upload operations are strictly logged under Audit Trails and require Security Officer or Administrator clearance.*`;
+
+      return {
+        handled: true,
+        response: {
+          id: `msg-${Date.now()}`,
+          role: 'assistant',
+          content: contentText,
+          timestamp: new Date().toISOString(),
+          evidenceBullets: [
+            'Supported file formats: PDF, TXT, DOCX, PNG, JPEG',
+            'Integrity: SHA-256 fingerprint generated automatically for all uploads',
+          ],
+          suggestedActions: [
+            {
+              id: 'act-real-papers',
+              label: 'Open Real Papers',
+              actionType: 'NAVIGATE',
+              payload: { path: '/real-papers' },
+            },
+            {
+              id: 'act-detected-content',
+              label: 'Open Detected Content',
+              actionType: 'NAVIGATE',
+              payload: { path: '/detected-content' },
+            },
+          ],
+        },
+      };
+    }
+
+    // 12. User & Account Management Help
+    if (
+      !providerEnabled && (
+        q.includes('user') ||
+        q.includes('account') ||
+        q.includes('register') ||
+        q.includes('profile') ||
+        q.includes('password') ||
+        q.includes('role') ||
+        q.includes('officer') ||
+        q.includes('reviewer')
+      )
+    ) {
+      return {
+        handled: true,
+        response: {
+          id: `msg-${Date.now()}`,
+          role: 'assistant',
+          content: `### User & Account Management
+
+LeakLens uses role-based access control (RBAC) to restrict confidential examination files:
+
+1. **Role Access**:
+   - **ADMIN**: Complete system control, user registration, and database management.
+   - **SECURITY_OFFICER**: Monitor alerts, upload verified exam papers, and initiate investigations.
+   - **REVIEWER**: Review pending queue items, mark confirmed leaks, or dismiss alerts.
+   - **VIEWER**: Read-only dashboard and alerts access.
+
+2. **Account Actions**:
+   - Go to **Settings → Profile Settings** to change your full name, password, or upload a custom **Profile Photo**.
+   - Admins can register new system users from **Settings → User Management** (Public registration is disabled for security).
+
+*Every administrative role action is recorded in the secure **Audit Logs**.*`,
+          timestamp: new Date().toISOString(),
+          evidenceBullets: [
+            'Access Controls: Role-Based Access Control (RBAC) active',
+            'Public Registration: Intentionally Disabled',
+          ],
+          suggestedActions: [
+            {
+              id: 'act-settings-profile',
+              label: 'Open Profile Settings',
+              actionType: 'NAVIGATE',
+              payload: { path: '/settings' },
+            },
+          ],
+        },
+      };
+    }
+
+    // 13. AI Provider Settings Help
+    if (
+      !providerEnabled && (
+        q.includes('setting') ||
+        q.includes('provider') ||
+        q.includes('api key') ||
+        q.includes('configure') ||
+        q.includes('model') ||
+        q.includes('change model')
+      )
+    ) {
+      return {
+        handled: true,
+        response: {
+          id: `msg-${Date.now()}`,
+          role: 'assistant',
+          content: `### AI Provider Configuration Help
+
+Configure and manage your LLM models directly from the system settings:
+
+1. Go to **Settings → AI Assistant**.
+2. Click **Add AI Provider** to register a new provider (e.g. Gemini, OpenAI, Anthropic, OpenRouter, or a local custom Ollama endpoint).
+3. Input the required API key, Model name, and endpoint. The system automatically masks credentials for security.
+4. Click **Test Connection** to measure connection latency and verify configuration.
+5. Toggle the provider to **Active** and click **Set as Default** to enable full semantic assistant chat.
+
+*All credentials are encrypted and stored securely.*`,
+          timestamp: new Date().toISOString(),
+          evidenceBullets: [
+            'Supported APIs: Gemini, OpenAI, Anthropic, OpenRouter, Custom HTTP endpoints',
+            'Security: API keys are masked and never returned in GET payloads',
+          ],
+          suggestedActions: [
+            {
+              id: 'act-settings-ai',
+              label: 'Configure AI Provider Settings',
+              actionType: 'NAVIGATE',
+              payload: { path: '/settings' },
+            },
+          ],
+        },
+      };
+    }
+
+    // 14. Offline/Local Greeting
+    if (
+      !providerEnabled && (
+        q === 'hello' ||
+        q === 'hi' ||
+        q === 'hey' ||
+        q === 'greetings' ||
+        q === 'namaste' ||
+        q === 'hola' ||
+        q === 'hello assistant' ||
+        q === 'say hello' ||
+        q === 'मराठी' ||
+        q === 'हिंदी'
+      )
+    ) {
+      return {
+        handled: true,
+        response: {
+          id: `msg-${Date.now()}`,
+          role: 'assistant',
+          content: `### Hello! 👋
+Welcome to the LeakLens Security Assistant. I am your integrated investigation companion.
+
+No AI provider is configured. Therefore, I am operating in **Deterministic Local Mode**. I can still execute direct system actions and look up database records.
+
+Try asking:
+- 'Show today's high-risk content'
+- 'How do I upload a verified paper?'
+- 'What are your capabilities?'
+- 'System status'`,
+          timestamp: new Date().toISOString(),
+          evidenceBullets: [
+            'Operating in Offline / Deterministic Mode',
+            'Full semantic chat is disabled until a provider is configured',
+          ],
+          suggestedActions: [
+            {
+              id: 'act-settings-ai',
+              label: 'Configure AI Assistant',
+              actionType: 'NAVIGATE',
+              payload: { path: '/settings' },
+            },
+          ],
+        },
+      };
+    }
+
     return { handled: false };
   }
 
@@ -718,7 +992,7 @@ export class AiAssistantService {
     const defaultProvider = db.getDefaultAiProvider(true);
 
     // 3. Check for deterministic fast-path or queries that work offline
-    const deterministic = this.handleDeterministicQuery(req.message, req.context);
+    const deterministic = this.handleDeterministicQuery(req.message, req.context, !!defaultProvider);
 
     // If no provider is configured:
     if (!defaultProvider) {
@@ -801,14 +1075,9 @@ CORE INTEGRITY & SECURITY RULES:
 5. TYPOGRAPHY & FORMAT:
    - Standard clear text in prose.
    - Use monospace backticks \`...\` strictly for IDs (e.g. \`DL-2048\`, \`RP-2026-DBMS-01\`, \`ALT-2048\`), question numbers (e.g. \`Q3\`), scores, percentages, and timestamps.
-   - Structure responses with:
-     ### Short heading
-     Clear explanation paragraph.
-     **Evidence**
-     - Bullet points with concrete IDs, subjects, marks, or match data.
-     **Assessment & Status**
-     - Current assessment: [VALUE]
-     - Human verification: [Required / Completed / Dismissed]
+   - ONLY use the audit/evidence format (### Heading, **Evidence** with bullets, **Assessment & Status**) when the user asks specifically about:
+     - active leaks, high-risk items, specific flagged documents, alerts, review queue items, or when they explicitly request a forensic audit/security status or report.
+   - For all other questions (such as greeting, help, explanation of how to use LeakLens, upload instructions, model settings, general conversation, account help, etc.), respond like a natural, helpful, friendly product assistant in natural prose or clean markdown, matching the user's language (English, Hindi, Hinglish, Marathi, etc.) without adding unrequested Evidence or Assessment sections or mentioning dashboard statistics.
 
 STRUCTURED APPLICATION CONTEXT:
 ${structuredContext.summaryText}
@@ -1047,8 +1316,26 @@ ${structuredContext.summaryText}
       });
 
       const fallbackContent = selectedItem
-        ? `**Local Forensic Analysis for ${selectedItem.name} (\`${selectedItem.id}\`):**\n\nThe document is currently recorded with a **${selectedItem.risk}** risk classification (Score: ${selectedItem.riskScore}/100).\n\n${selectedItem.matchedReferencePaper ? `High similarity detected against verified exam paper **${selectedItem.matchedReferencePaper.title}** (${selectedItem.matchedReferencePaper.overlapPercentage}% overlap).` : 'No direct reference vault match was identified.'}\n\n*Human verification is required before confirming or dismissing this finding.*`
-        : `**LeakLens Examination Security Summary:**\n\nThe system is actively monitoring all configured channels. There are currently **${stats.activeAlerts} active alerts** (${stats.highRiskAlerts} high risk) and **${stats.pendingReviews} items pending review** across **${stats.scannedTotal} scanned documents**.\n\n*All statistics reflect live records in the secure exam vault.*`;
+        ? `### Local Forensic Analysis — ${selectedItem.name} (\`${selectedItem.id}\`)
+        
+The document is currently recorded with a **${selectedItem.risk}** risk classification (Score: \`${selectedItem.riskScore}/100\`).
+
+${selectedItem.matchedReferencePaper ? `High similarity detected against verified exam paper **${selectedItem.matchedReferencePaper.title}** (${selectedItem.matchedReferencePaper.overlapPercentage}% overlap).` : 'No direct reference vault match was identified.'}
+
+*Note: The configured AI Provider **${defaultProvider.modelDisplayName}** is currently unreachable (Error: ${err.message}). Showing cached database parameters.*`
+        : `### AI Provider Connection Issue
+
+The configured AI provider **${defaultProvider.modelDisplayName}** was unreachable or returned an error.
+
+*Error details: ${err.message}*
+
+**What you can do:**
+1. Check your network connection.
+2. Verify your API credentials in **Settings → AI Assistant**.
+3. Direct navigation and direct commands remain active. Try asking:
+   - 'Show today's high-risk content'
+   - 'How to upload a verified paper'
+   - 'What are your capabilities?'`;
 
       return {
         message: {

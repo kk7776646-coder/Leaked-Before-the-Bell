@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { useTheme, ThemeMode } from '../../hooks/useTheme';
 import { useAuth } from '../../context/AuthContext';
+import { api } from '../../services/api';
 
 export const Topbar: React.FC = () => {
   const navigate = useNavigate();
@@ -25,9 +26,44 @@ export const Topbar: React.FC = () => {
 
   const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [cacheBuster, setCacheBuster] = useState<number>(Date.now());
+  const [hasUnreadAlerts, setHasUnreadAlerts] = useState<boolean>(false);
 
   const themeMenuRef = useRef<HTMLDivElement>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!user) return;
+    const fetchAlertsCount = async () => {
+      try {
+        const alertsList = await api.getAlerts();
+        const unread = alertsList.some(
+          (a) => a.status === 'ACTIVE' || a.status === 'INVESTIGATING'
+        );
+        setHasUnreadAlerts(unread);
+      } catch (err) {
+        console.error('Failed to load alerts count in Topbar:', err);
+      }
+    };
+    fetchAlertsCount();
+    const interval = setInterval(fetchAlertsCount, 30000);
+    return () => clearInterval(interval);
+  }, [user]);
+
+  useEffect(() => {
+    setCacheBuster(Date.now());
+  }, [user?.avatarUrl]);
+
+  const getAuthenticatedAvatarUrl = (url?: string) => {
+    if (!url) return '';
+    if (!url.startsWith('/api/')) return url;
+    const token = localStorage.getItem('leaklens_token');
+    const separator = url.includes('?') ? '&' : '?';
+    const queryParts = [];
+    if (token) queryParts.push(`token=${encodeURIComponent(token)}`);
+    queryParts.push(`t=${cacheBuster}`);
+    return `${url}${separator}${queryParts.join('&')}`;
+  };
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -68,13 +104,10 @@ export const Topbar: React.FC = () => {
       : 'Operator';
 
   return (
-    <header className="h-16 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 sm:px-6 flex items-center justify-between gap-3 shrink-0 z-20 font-sans">
+    <header className="h-16 border-b border-[#E5E7EB] dark:border-slate-800/50 bg-white dark:bg-slate-900 px-3 sm:px-6 flex items-center justify-between gap-3 shrink-0 z-20 font-sans">
       {/* Left Anchor Area - Discreet Security Status */}
       <div className="flex items-center gap-3 shrink-0 min-w-0">
-        <div className="hidden lg:flex items-center gap-2 px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200/80 dark:border-emerald-800/60 text-[10px] font-mono font-semibold text-emerald-700 dark:text-emerald-300">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-          <span>SURVEILLANCE ENGINE ONLINE</span>
-        </div>
+        {/* Status badge removed */}
       </div>
 
       {/* Center Search Input - Clean and Proportional */}
@@ -149,7 +182,9 @@ export const Topbar: React.FC = () => {
           className="w-9 h-9 rounded-lg bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/80 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-300 transition-colors cursor-pointer relative shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-600/30"
         >
           <Bell className="w-4 h-4" />
-          <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-rose-600 ring-2 ring-white dark:ring-slate-900"></span>
+          {hasUnreadAlerts && (
+            <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-rose-600 ring-2 ring-white dark:ring-slate-900 animate-pulse"></span>
+          )}
         </Link>
 
         {/* USER PROFILE IN TOP-RIGHT */}
@@ -162,11 +197,20 @@ export const Topbar: React.FC = () => {
             className="flex items-center gap-2.5 p-1 sm:px-2.5 sm:py-1 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 hover:border-blue-600/60 dark:hover:border-blue-500 transition-all cursor-pointer shadow-2xs group focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-600/30"
           >
             <div className="relative">
-              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center text-xs font-bold shadow-xs">
-                {initials}
-              </div>
+              {user?.avatarUrl ? (
+                <img
+                  src={getAuthenticatedAvatarUrl(user.avatarUrl)}
+                  alt={user.fullName || 'User'}
+                  referrerPolicy="no-referrer"
+                  className="w-7 h-7 sm:w-8 sm:h-8 rounded-full object-cover shadow-xs"
+                />
+              ) : (
+                <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-bold shadow-xs">
+                  {initials}
+                </div>
+              )}
               <span
-                className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-white dark:ring-slate-900"
+                className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-white dark:ring-slate-900 animate-pulse"
                 title="Active Session"
               />
             </div>
@@ -189,9 +233,18 @@ export const Topbar: React.FC = () => {
               {/* Header Info */}
               <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center text-sm font-bold shadow-sm shrink-0">
-                    {initials}
-                  </div>
+                  {user?.avatarUrl ? (
+                    <img
+                      src={getAuthenticatedAvatarUrl(user.avatarUrl)}
+                      alt={user.fullName || 'User'}
+                      referrerPolicy="no-referrer"
+                      className="w-10 h-10 rounded-full object-cover shadow-sm shrink-0"
+                    />
+                  ) : (
+                    <div className="w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center text-sm font-bold shadow-sm shrink-0">
+                      {initials}
+                    </div>
+                  )}
                   <div className="min-w-0 flex-1">
                     <p className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">
                       {user?.fullName || 'Exam Operations'}
@@ -227,6 +280,14 @@ export const Topbar: React.FC = () => {
 
               {/* Navigation Links */}
               <div className="p-1.5 space-y-0.5 border-b border-slate-100 dark:border-slate-800">
+                <Link
+                  to="/settings?tab=profile"
+                  onClick={() => setIsUserMenuOpen(false)}
+                  className="flex items-center gap-2.5 px-3 py-2 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl transition-colors font-medium cursor-pointer"
+                >
+                  <User className="w-4 h-4 text-slate-400" />
+                  <span>My Profile & Avatar</span>
+                </Link>
                 <Link
                   to="/settings"
                   onClick={() => setIsUserMenuOpen(false)}

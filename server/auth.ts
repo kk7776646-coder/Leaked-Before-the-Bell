@@ -100,6 +100,7 @@ export function toSafeUser(user: UserRecord): SafeUser {
     status: user.status,
     createdAt: user.createdAt,
     lastLoginAt: user.lastLoginAt,
+    avatarUrl: user.avatarUrl,
   };
 }
 
@@ -193,7 +194,13 @@ export function seedDefaultUsersIfEmpty(): void {
         console.log(`======================================================================\n`);
       }
     } else {
-      console.log(`[BOOTSTRAP] Configured BOOTSTRAP_ADMIN_EMAIL: ${bootstrapEmail} already exists. Preserving credentials.`);
+      const existingUser = users.find((u) => u.email.trim().toLowerCase() === bootstrapEmail);
+      if (existingUser && (existingUser.role !== 'ADMIN' || existingUser.status !== 'ACTIVE')) {
+        db.updateUser(existingUser.id, { role: 'ADMIN', status: 'ACTIVE' });
+        console.log(`[BOOTSTRAP] Configured BOOTSTRAP_ADMIN_EMAIL: ${bootstrapEmail} already exists. Ensured ADMIN role and ACTIVE status.`);
+      } else {
+        console.log(`[BOOTSTRAP] Configured BOOTSTRAP_ADMIN_EMAIL: ${bootstrapEmail} already exists. Preserving credentials.`);
+      }
     }
   } else {
     // If no custom BOOTSTRAP_ADMIN_EMAIL is configured, fall back to checking if any ADMIN exists

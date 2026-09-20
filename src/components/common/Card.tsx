@@ -26,8 +26,8 @@ export const Card: React.FC<CardProps> = ({
 
   return (
     <div
-      className={`bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-[0_1px_3px_0_rgba(15,23,42,0.04)] ${overflowClass} transition-all duration-200 ${
-        hoverEffect ? 'hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-[0_4px_12px_-2px_rgba(15,23,42,0.06)]' : ''
+      className={`bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-[0_1px_3px_0_rgba(15,23,42,0.04)] ${overflowClass} transition-all duration-300 ${
+        hoverEffect ? 'hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-[0_12px_30px_rgba(148,163,184,0.18)] dark:hover:shadow-[0_12px_30px_rgba(2,6,23,0.4)] hover:-translate-y-0.5' : ''
       } ${className}`}
     >
       {(title || action || subtitle) && (

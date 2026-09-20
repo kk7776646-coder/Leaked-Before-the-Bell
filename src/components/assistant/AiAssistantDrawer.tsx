@@ -16,6 +16,7 @@ import {
   LoaderCircle,
   ChevronDown,
   ExternalLink,
+  Bot,
 } from 'lucide-react';
 import {
   api,
@@ -490,31 +491,38 @@ export const AiAssistantDrawer: React.FC = () => {
         </div>
 
         {/* 1. Header with Context */}
-        <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800 flex items-start justify-between bg-white dark:bg-slate-900 shrink-0">
-          <div className="min-w-0 pr-2">
-            <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100 tracking-tight">
-              Assistant
-            </h2>
-            <div
-              className="text-[11px] text-slate-500 dark:text-slate-400 font-medium truncate mt-0.5"
-              title={`Context: ${getContextLabel()}`}
-            >
-              Context: <span className="text-slate-700 dark:text-slate-300 font-mono text-[11px]">{getContextLabel()}</span>
+        <div className="px-4 py-3.5 border-b border-slate-200/80 dark:border-slate-800 flex items-center justify-between bg-white dark:bg-slate-900 shrink-0 shadow-2xs">
+          <div className="flex items-center gap-2.5 min-w-0 pr-2">
+            <div className="w-7 h-7 rounded-lg bg-blue-50 dark:bg-blue-950/60 flex items-center justify-center text-blue-600 dark:text-blue-400 shrink-0 border border-blue-100 dark:border-blue-900/50">
+              <Bot className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <h2 className="text-xs font-semibold text-slate-900 dark:text-slate-100 tracking-tight flex items-center gap-1.5">
+                <span>Assistant</span>
+                <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 font-mono">LeakLens</span>
+              </h2>
+              <div
+                className="text-[11px] text-slate-500 dark:text-slate-400 font-medium truncate mt-0.5"
+                title={`Context: ${getContextLabel()}`}
+              >
+                Context: <span className="text-slate-700 dark:text-slate-300 font-mono text-[11px]">{getContextLabel()}</span>
+              </div>
             </div>
           </div>
 
           <div className="flex items-center gap-1 shrink-0">
-            {messages.length > 0 && (
-              <button
-                type="button"
-                onClick={handleClearChat}
-                title="Clear conversation"
-                aria-label="Clear chat messages"
-                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer transition-colors"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
-            )}
+            {/* Refresh / Clear conversation */}
+            <button
+              type="button"
+              onClick={handleClearChat}
+              disabled={messages.length === 0}
+              title="Clear conversation"
+              aria-label="Clear chat messages"
+              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed cursor-pointer transition-colors"
+            >
+              <RotateCcw className="w-4 h-4" />
+            </button>
+            {/* Close Option */}
             <button
               type="button"
               onClick={closeAssistant}
@@ -548,24 +556,28 @@ export const AiAssistantDrawer: React.FC = () => {
         <div
           ref={messagesContainerRef}
           onScroll={handleScroll}
-          className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0 relative"
+          className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0 relative bg-[#F5F7FB] dark:bg-slate-950"
         >
           {messages.length === 0 ? (
             /* Empty State */
-            <div className="py-4 space-y-4">
-              <div>
-                <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100 mb-1">
-                  Assistant
+            <div className="py-6 px-2 space-y-5">
+              <div className="space-y-1">
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-50 dark:bg-blue-950/50 border border-blue-100 dark:border-blue-900/40 text-blue-700 dark:text-blue-300 text-[11px] font-medium mb-2">
+                  <Bot className="w-3 h-3" />
+                  <span>LeakLens Intelligence Assistant</span>
+                </div>
+                <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                  Ask about this detected content
                 </h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                  Ask about the content you're reviewing.
+                  Query the examination security database, compare matched questions, or review forensic evidence.
                 </p>
               </div>
 
               {/* Suggested Questions */}
               <div className="space-y-2 pt-1">
-                <div className="text-[11px] font-medium text-slate-400 dark:text-slate-500">
-                  Suggested questions:
+                <div className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                  Suggested queries
                 </div>
                 <div className="flex flex-col gap-1.5">
                   {suggestedQuestions.map((question, idx) => (
@@ -573,10 +585,10 @@ export const AiAssistantDrawer: React.FC = () => {
                       key={idx}
                       type="button"
                       onClick={() => handleSendMessage(question)}
-                      className="text-left px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs text-slate-700 dark:text-slate-300 transition-colors flex items-center justify-between group cursor-pointer"
+                      className="text-left px-3.5 py-2.5 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800/80 text-xs text-slate-700 dark:text-slate-300 transition-all flex items-center justify-between group cursor-pointer shadow-2xs"
                     >
-                      <span className="truncate pr-2">• {question}</span>
-                      <ChevronRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-blue-600 transition-colors shrink-0" />
+                      <span className="truncate pr-2">{question}</span>
+                      <ChevronRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-blue-600 group-hover:translate-x-0.5 transition-all shrink-0" />
                     </button>
                   ))}
                 </div>
@@ -584,7 +596,7 @@ export const AiAssistantDrawer: React.FC = () => {
 
               {/* Not Configured Notice (if applicable) */}
               {!activeProvider && hasLoadedProvider && (
-                <div className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 text-xs">
+                <div className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs shadow-2xs">
                   <div className="font-semibold text-slate-900 dark:text-slate-100 mb-1">
                     Assistant not configured
                   </div>
@@ -595,7 +607,7 @@ export const AiAssistantDrawer: React.FC = () => {
                     variant="secondary"
                     size="sm"
                     onClick={() => navigate('/settings?tab=ai-assistant')}
-                    className="text-[11px] h-7 bg-white dark:bg-slate-800"
+                    className="text-[11px] h-7 bg-slate-50 dark:bg-slate-800"
                   >
                     Open Settings
                   </Button>
@@ -607,21 +619,21 @@ export const AiAssistantDrawer: React.FC = () => {
             messages.map((msg) => (
               <div
                 key={msg.id}
-                className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}
+                className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'} space-y-1.5`}
               >
                 {msg.role === 'user' ? (
                   /* User Message */
-                  <div className="max-w-[85%] px-3.5 py-2 rounded-xl bg-blue-600 text-white text-xs leading-relaxed shadow-xs">
+                  <div className="max-w-[85%] px-4 py-2.5 rounded-2xl rounded-tr-sm bg-blue-600 text-white text-xs leading-relaxed shadow-xs">
                     <div className="whitespace-pre-wrap">{msg.content}</div>
                   </div>
                 ) : (
                   /* Assistant Message */
                   <div className="max-w-[96%] w-full space-y-2">
                     <div
-                      className={`p-3.5 rounded-xl text-xs leading-relaxed border ${
+                      className={`p-4 rounded-2xl rounded-tl-sm text-xs leading-relaxed border shadow-xs ${
                         msg.status === 'ERROR'
                           ? 'bg-rose-50 dark:bg-rose-950/30 border-rose-200 dark:border-rose-900 text-rose-900 dark:text-rose-200'
-                          : 'bg-slate-50/80 dark:bg-slate-800/70 border-slate-200/80 dark:border-slate-800 text-slate-800 dark:text-slate-200'
+                          : 'bg-white dark:bg-slate-900 border-slate-200/80 dark:border-slate-800 text-slate-800 dark:text-slate-200'
                       }`}
                     >
                       {/* Markdown Body */}
@@ -629,22 +641,22 @@ export const AiAssistantDrawer: React.FC = () => {
                         <Markdown
                           components={{
                             h1: ({ children }) => (
-                              <h3 className="text-xs font-semibold text-slate-900 dark:text-slate-100 mt-1 mb-1.5 first:mt-0">
+                              <h3 className="text-xs font-semibold text-slate-900 dark:text-slate-100 mt-1.5 mb-1.5 first:mt-0">
                                 {children}
                               </h3>
                             ),
                             h2: ({ children }) => (
-                              <h3 className="text-xs font-semibold text-slate-900 dark:text-slate-100 mt-1 mb-1.5 first:mt-0">
+                              <h3 className="text-xs font-semibold text-slate-900 dark:text-slate-100 mt-1.5 mb-1.5 first:mt-0">
                                 {children}
                               </h3>
                             ),
                             h3: ({ children }) => (
-                              <h3 className="text-xs font-semibold text-slate-900 dark:text-slate-100 mt-1 mb-1.5 first:mt-0">
+                              <h3 className="text-xs font-semibold text-slate-900 dark:text-slate-100 mt-1.5 mb-1.5 first:mt-0">
                                 {children}
                               </h3>
                             ),
                             h4: ({ children }) => (
-                              <h4 className="text-xs font-semibold text-slate-900 dark:text-slate-100 mt-1 mb-1">
+                              <h4 className="text-xs font-semibold text-slate-900 dark:text-slate-100 mt-1.5 mb-1">
                                 {children}
                               </h4>
                             ),
@@ -654,18 +666,18 @@ export const AiAssistantDrawer: React.FC = () => {
                               </p>
                             ),
                             ul: ({ children }) => (
-                              <ul className="pl-3.5 space-y-1 my-2 text-xs text-slate-700 dark:text-slate-300 list-disc">
+                              <ul className="pl-4 space-y-1 my-2 text-xs text-slate-700 dark:text-slate-300 list-disc">
                                 {children}
                               </ul>
                             ),
                             ol: ({ children }) => (
-                              <ol className="pl-3.5 space-y-1 my-2 text-xs text-slate-700 dark:text-slate-300 list-decimal">
+                              <ol className="pl-4 space-y-1 my-2 text-xs text-slate-700 dark:text-slate-300 list-decimal">
                                 {children}
                               </ol>
                             ),
                             li: ({ children }) => <li className="leading-relaxed">{children}</li>,
                             code: ({ children }) => (
-                              <code className="font-mono text-[11px] bg-slate-200/70 dark:bg-slate-700/60 text-slate-800 dark:text-slate-200 px-1 py-0.5 rounded border border-slate-300/60 dark:border-slate-600/60">
+                              <code className="font-mono text-[11px] bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700">
                                 {children}
                               </code>
                             ),
@@ -682,19 +694,21 @@ export const AiAssistantDrawer: React.FC = () => {
 
                       {/* Evidence Bullets (if provided) */}
                       {msg.evidenceBullets && msg.evidenceBullets.length > 0 && (
-                        <div className="mt-3 pt-2.5 border-t border-slate-200 dark:border-slate-700">
-                          <div className="text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-1.5 flex items-center gap-1.5">
-                            <ShieldAlert className="w-3 h-3 text-amber-500" />
+                        <div className="mt-3.5 pt-3 border-t border-slate-100 dark:border-slate-800">
+                          <div className="text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-2 flex items-center gap-1.5 select-none">
+                            <span className="select-none pointer-events-none inline-flex">
+                              <ShieldAlert className="w-3.5 h-3.5 text-amber-500 select-none pointer-events-none" />
+                            </span>
                             <span>Recorded Evidence</span>
                           </div>
-                          <ul className="space-y-1">
+                          <ul className="space-y-1.5 bg-slate-50 dark:bg-slate-800/50 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800">
                             {msg.evidenceBullets.map((bullet, bIdx) => (
                               <li
                                 key={bIdx}
-                                className="text-[11px] text-slate-600 dark:text-slate-300 flex items-start gap-1.5 font-mono"
+                                className="text-[11px] text-slate-600 dark:text-slate-300 flex items-start gap-2 font-mono"
                               >
-                                <span className="text-slate-400 select-none">•</span>
-                                <span>{bullet}</span>
+                                <span className="text-amber-500 select-none pointer-events-none mt-0.5">•</span>
+                                <span className="leading-normal">{bullet}</span>
                               </li>
                             ))}
                           </ul>
@@ -703,12 +717,14 @@ export const AiAssistantDrawer: React.FC = () => {
 
                       {/* Destructive Action Confirmation Dialog */}
                       {msg.pendingConfirmationAction && (
-                        <div className="mt-3 p-3 rounded-lg bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-xs text-rose-900 dark:text-rose-200">
-                          <div className="flex items-center gap-1.5 font-semibold mb-1">
-                            <AlertTriangle className="w-4 h-4 text-rose-600" />
+                        <div className="mt-3.5 p-3.5 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-xs text-rose-900 dark:text-rose-200 shadow-2xs">
+                          <div className="flex items-center gap-1.5 font-semibold mb-1.5 select-none">
+                            <span className="select-none pointer-events-none inline-flex">
+                              <AlertTriangle className="w-4 h-4 text-rose-600 select-none pointer-events-none" />
+                            </span>
                             <span>Confirmation Required</span>
                           </div>
-                          <p className="text-[11px] text-rose-800 dark:text-rose-300 mb-3">
+                          <p className="text-[11px] text-rose-800 dark:text-rose-300 mb-3 leading-relaxed">
                             {msg.pendingConfirmationAction.prompt}
                           </p>
                           <div className="flex items-center gap-2">
@@ -730,7 +746,7 @@ export const AiAssistantDrawer: React.FC = () => {
                               variant="secondary"
                               size="sm"
                               onClick={() => handleCancelAction(msg.id)}
-                              className="text-[11px] h-7"
+                              className="text-[11px] h-7 bg-white dark:bg-slate-900"
                             >
                               {msg.pendingConfirmationAction.cancelLabel || 'Cancel'}
                             </Button>
@@ -740,19 +756,21 @@ export const AiAssistantDrawer: React.FC = () => {
                     </div>
 
                     {/* Action Chips & Toolbar below message */}
-                    <div className="flex flex-wrap items-center justify-between gap-1.5 px-1">
+                    <div className="flex flex-wrap items-center justify-between gap-2 px-1 select-none">
                       {/* Suggested Action Chips */}
                       {msg.suggestedActions && msg.suggestedActions.length > 0 ? (
-                        <div className="flex flex-wrap gap-1.5">
+                        <div className="flex flex-wrap gap-1.5 select-none">
                           {msg.suggestedActions.map((act) => (
                             <button
                               key={act.id}
                               type="button"
                               onClick={() => handleActionClick(act)}
-                              className="px-2.5 py-1 rounded-lg text-[11px] font-medium border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-1 transition-colors cursor-pointer"
+                              className="px-2.5 py-1 rounded-lg text-[11px] font-medium border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-1.5 transition-all cursor-pointer select-none shadow-2xs"
                             >
                               <span>{act.label}</span>
-                              <ArrowRight className="w-2.5 h-2.5 text-slate-400" />
+                              <span className="select-none pointer-events-none inline-flex">
+                                <ArrowRight className="w-2.5 h-2.5 text-slate-400 select-none pointer-events-none" />
+                              </span>
                             </button>
                           ))}
                         </div>
@@ -761,14 +779,16 @@ export const AiAssistantDrawer: React.FC = () => {
                       )}
 
                       {/* Tool Actions: Copy / Retry */}
-                      <div className="flex items-center gap-1 text-[10px] text-slate-400">
+                      <div className="flex items-center gap-1.5 text-[10px] text-slate-400 select-none ml-auto">
                         {msg.status === 'ERROR' && (
                           <button
                             type="button"
                             onClick={() => handleRetryMessage(msg.id)}
-                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 cursor-pointer transition-colors"
+                            className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 cursor-pointer transition-colors select-none"
                           >
-                            <RotateCcw className="w-3 h-3" />
+                            <span className="select-none pointer-events-none inline-flex">
+                              <RotateCcw className="w-3 h-3 select-none pointer-events-none" />
+                            </span>
                             <span>Retry</span>
                           </button>
                         )}
@@ -776,16 +796,20 @@ export const AiAssistantDrawer: React.FC = () => {
                           type="button"
                           onClick={() => handleCopyMessage(msg.id, msg.content)}
                           title="Copy response"
-                          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer transition-colors"
+                          className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-800 cursor-pointer transition-colors select-none"
                         >
                           {copiedMsgId === msg.id ? (
                             <>
-                              <Check className="w-3 h-3 text-emerald-500" />
-                              <span className="text-emerald-500 font-medium">Copied</span>
+                              <span className="select-none pointer-events-none inline-flex">
+                                <Check className="w-3 h-3 text-emerald-500 select-none pointer-events-none" />
+                              </span>
+                              <span className="text-emerald-600 font-medium">Copied</span>
                             </>
                           ) : (
                             <>
-                              <Copy className="w-3 h-3" />
+                              <span className="select-none pointer-events-none inline-flex">
+                                <Copy className="w-3 h-3 select-none pointer-events-none" />
+                              </span>
                               <span>Copy</span>
                             </>
                           )}
@@ -801,9 +825,9 @@ export const AiAssistantDrawer: React.FC = () => {
           {/* Loading Indicator */}
           {isSending && (
             <div className="flex items-start gap-2">
-              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-800 text-xs text-slate-500 dark:text-slate-400 flex items-center gap-2">
+              <div className="p-3.5 rounded-2xl rounded-tl-sm bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 text-xs text-slate-500 dark:text-slate-400 flex items-center gap-2.5 shadow-xs">
                 <LoaderCircle className="w-3.5 h-3.5 animate-spin text-blue-600" />
-                <span>Assistant is responding…</span>
+                <span className="font-medium">Assistant is responding...</span>
               </div>
             </div>
           )}
@@ -817,7 +841,7 @@ export const AiAssistantDrawer: React.FC = () => {
             <button
               type="button"
               onClick={scrollToBottom}
-              className="px-3 py-1.5 rounded-full bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-xs font-medium shadow-md flex items-center gap-1.5 hover:opacity-90 transition-opacity cursor-pointer"
+              className="px-3.5 py-1.5 rounded-full bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-xs font-medium shadow-lg flex items-center gap-1.5 hover:opacity-90 transition-opacity cursor-pointer border border-slate-700/50"
             >
               <span>New response</span>
               <ChevronDown className="w-3.5 h-3.5" />
@@ -826,14 +850,14 @@ export const AiAssistantDrawer: React.FC = () => {
         )}
 
         {/* 3. Quick Actions Row (Above Input) */}
-        <div className="px-3 py-1.5 border-t border-slate-100 dark:border-slate-800/80 bg-slate-50/50 dark:bg-slate-900/50 flex items-center gap-1.5 overflow-x-auto no-scrollbar shrink-0">
+        <div className="px-3 py-2 border-t border-slate-200/80 dark:border-slate-800 bg-white/90 dark:bg-slate-900/90 backdrop-blur-xs flex items-center gap-1.5 overflow-x-auto no-scrollbar shrink-0 shadow-2xs">
           {quickActions.map((act, idx) => (
             <button
               key={idx}
               type="button"
               disabled={isSending}
               onClick={() => handleSendMessage(act.query)}
-              className="px-2.5 py-1 rounded-lg text-[11px] font-medium whitespace-nowrap shrink-0 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-50 transition-colors cursor-pointer"
+              className="px-3 py-1.5 rounded-full text-[11px] font-medium whitespace-nowrap shrink-0 border border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 hover:border-slate-300 dark:hover:border-slate-600 disabled:opacity-50 transition-all cursor-pointer shadow-2xs"
             >
               {act.label}
             </button>
@@ -841,7 +865,7 @@ export const AiAssistantDrawer: React.FC = () => {
         </div>
 
         {/* 4. Fixed Input Area */}
-        <div className="p-3 border-t border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 shrink-0">
+        <div className="p-3.5 border-t border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shrink-0 shadow-xs">
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -859,23 +883,23 @@ export const AiAssistantDrawer: React.FC = () => {
                   handleSendMessage();
                 }
               }}
-              placeholder="Ask Assistant…"
+              placeholder="Ask Assistant..."
               rows={1}
               disabled={isSending}
-              className="flex-1 max-h-28 min-h-[38px] px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 resize-none leading-relaxed"
+              className="flex-1 max-h-28 min-h-[40px] px-3.5 py-2.5 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/80 text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 resize-none leading-relaxed transition-all"
             />
             <Button
               type="submit"
               variant="primary"
               size="sm"
               disabled={!inputText.trim() || isSending}
-              className="h-9 px-3 rounded-xl shrink-0"
+              className="h-10 px-3.5 rounded-xl shrink-0 bg-blue-600 hover:bg-blue-700 text-white shadow-xs"
               title="Send message (Enter)"
             >
               <Send className="w-3.5 h-3.5" />
             </Button>
           </form>
-          <div className="mt-1 text-[10px] text-slate-400 text-center select-none">
+          <div className="mt-1.5 text-[10px] text-slate-400 text-center select-none font-medium">
             <span><strong>Enter</strong> to send · <strong>Shift+Enter</strong> for newline</span>
           </div>
         </div>

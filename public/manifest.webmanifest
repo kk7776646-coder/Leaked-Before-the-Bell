@@ -1,0 +1,17 @@
+{
+  "name": "LeakLens",
+  "short_name": "LeakLens",
+  "description": "AI-assisted examination paper early-warning, document intelligence, and investigation system",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#0f172a",
+  "icons": [
+    {
+      "src": "/logo.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -454,3 +454,27 @@ export async function runAllAiAssistantTests(): Promise<AiTestSuiteReport> {
     results,
   };
 }
+
+if (process.argv[1] && (process.argv[1].endsWith('aiAssistantTestSuite.ts') || process.argv[1].endsWith('aiAssistantTestSuite'))) {
+  console.log('Running AI Assistant Test Suite...');
+  runAllAiAssistantTests().then((report) => {
+    console.log('\n======================================');
+    console.log(report.summary);
+    console.log('======================================');
+    report.results.forEach((r) => {
+      const icon = r.status === 'PASSED' ? '✅' : '❌';
+      console.log(`${icon} [${r.id}] ${r.name} (${r.category}): ${r.status}`);
+      if (r.status === 'FAILED') {
+        console.error(`   Error details: ${r.details}`);
+      }
+    });
+    if (report.failedCount > 0) {
+      process.exit(1);
+    } else {
+      process.exit(0);
+    }
+  }).catch((err) => {
+    console.error('Fatal error running tests:', err);
+    process.exit(1);
+  });
+}

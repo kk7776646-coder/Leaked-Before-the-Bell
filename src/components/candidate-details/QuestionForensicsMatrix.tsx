@@ -8,11 +8,15 @@ import { Button } from '../common/Button';
 interface QuestionForensicsMatrixProps {
   candidate: CandidateRecord;
   onJumpToPage?: (pageNum: number) => void;
+  selectedQuestionId?: string;
+  onSelectQuestion?: (questionId: string) => void;
 }
 
 export const QuestionForensicsMatrix: React.FC<QuestionForensicsMatrixProps> = ({
   candidate,
   onJumpToPage,
+  selectedQuestionId,
+  onSelectQuestion,
 }) => {
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
 
@@ -105,11 +109,18 @@ export const QuestionForensicsMatrix: React.FC<QuestionForensicsMatrixProps> = (
                   );
                   const pageNumber = qObj?.pageNumber || 1;
 
+                  const isSelected = selectedQuestionId === item.candidateQuestionId;
+
                   return (
                     <React.Fragment key={rowKey}>
                       <tr
-                        onClick={() => setExpandedRow(isExpanded ? null : rowKey)}
-                        className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 active:bg-slate-100/70 dark:active:bg-slate-800/70 transition-all duration-150 cursor-pointer select-none"
+                        onClick={() => {
+                          setExpandedRow(isExpanded ? null : rowKey);
+                          onSelectQuestion?.(item.candidateQuestionId);
+                        }}
+                        className={`hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-all duration-150 cursor-pointer select-none ${
+                          isSelected ? 'bg-blue-50/70 dark:bg-blue-950/40 ring-1 ring-blue-500/30' : ''
+                        }`}
                       >
                         <td className="py-3 px-4 font-mono font-bold text-blue-600 dark:text-blue-400">
                           {item.candidateQuestionId}

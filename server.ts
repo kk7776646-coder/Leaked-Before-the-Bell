@@ -1,8 +1,38 @@
 import express from 'express';
 import path from 'path';
+import fs from 'fs';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import { createServer as createViteServer } from 'vite';
+
+// Load .env variables manually for Node/tsx compatibility in dev/local environments
+function loadEnv() {
+  try {
+    const envPath = path.resolve(process.cwd(), '.env');
+    if (fs.existsSync(envPath)) {
+      const content = fs.readFileSync(envPath, 'utf8');
+      content.split(/\r?\n/).forEach((line) => {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith('#')) return;
+        const index = trimmed.indexOf('=');
+        if (index === -1) return;
+        const key = trimmed.substring(0, index).trim();
+        let val = trimmed.substring(index + 1).trim();
+        if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+          val = val.substring(1, val.length - 1);
+        }
+        if (key && !process.env[key]) {
+          process.env[key] = val;
+        }
+      });
+      console.log('[LeakLens Env] Loaded environment variables from .env');
+    }
+  } catch (err: any) {
+    console.warn('[LeakLens Env] Error reading .env file:', err.message);
+  }
+}
+loadEnv();
+
 import { apiRouter } from './server/routes';
 import { authRouter, extractAuth } from './server/authRoutes';
 import { initStorage } from './server/storage';

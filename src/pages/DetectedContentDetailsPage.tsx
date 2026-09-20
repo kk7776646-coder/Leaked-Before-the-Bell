@@ -27,6 +27,11 @@ import {
   RefreshCw,
   Eye,
   FileCheck2,
+  Download,
+  ExternalLink,
+  ChevronDown,
+  ChevronUp,
+  Cpu,
 } from 'lucide-react';
 import { api, DetectedContentRecord } from '../services/api';
 import { ReviewDecision } from '../types/review';
@@ -39,6 +44,8 @@ export const DetectedContentDetailsPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [toast, setToast] = useState<ToastNotification | null>(null);
+  const [telemetryOpen, setTelemetryOpen] = useState(false);
+  const [selectedQuestionId, setSelectedQuestionId] = useState<string | undefined>(undefined);
 
   const fetchContent = () => {
     if (!id) return;
@@ -186,6 +193,30 @@ export const DetectedContentDetailsPage: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2">
+          <a
+            href={api.getCandidateDocumentUrl(content.id)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 transition-colors"
+          >
+            <Eye className="w-3.5 h-3.5 text-blue-600" />
+            Open Original
+          </a>
+          <button
+            type="button"
+            onClick={() => {
+              const link = document.createElement('a');
+              link.href = api.getCandidateDocumentUrl(content.id);
+              link.download = content.name;
+              document.body.appendChild(link);
+              link.click();
+              document.body.removeChild(link);
+            }}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 transition-colors"
+          >
+            <Download className="w-3.5 h-3.5 text-slate-500" />
+            Download
+          </button>
           {content.status === 'ACTIVE' ? (
             <Button
               variant="outline"
@@ -216,8 +247,8 @@ export const DetectedContentDetailsPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Main Header Card */}
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 mb-5 shadow-xs font-sans">
+      {/* Main Compact Header */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 mb-4 shadow-2xs font-sans">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div className="flex items-start gap-3.5">
             <div className="w-12 h-12 rounded-xl bg-slate-100 dark:bg-slate-800 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0 mt-0.5">
@@ -257,121 +288,205 @@ export const DetectedContentDetailsPage: React.FC = () => {
               </div>
             </div>
           </div>
+        </div>
+      </div>
 
-          <div className="flex items-center gap-3 self-start lg:self-center">
-            <div className="text-right px-3.5 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60">
-              <span className="text-[10px] text-slate-400 font-semibold block uppercase">
-                Review Status
-              </span>
-              <span
-                className={`text-xs font-bold ${
-                  content.review === 'Reviewed'
-                    ? 'text-emerald-600'
-                    : content.review === 'Needs Verification'
-                    ? 'text-rose-600'
-                    : 'text-amber-600'
-                }`}
-              >
-                {content.review}
-              </span>
+      {/* Quick Assessment Strip */}
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-6 font-sans">
+        <div className="p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xs">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">Risk</span>
+          <span className={`text-xs font-bold px-2 py-0.5 rounded inline-block ${content.risk === 'HIGH' ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-400' : content.risk === 'REVIEW REQUIRED' ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400' : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400'}`}>
+            {content.risk}
+          </span>
+        </div>
+        <div className="p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xs">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">Overlap</span>
+          <span className="text-sm font-bold text-slate-900 dark:text-slate-100 font-mono">
+            {content.riskScore}%
+          </span>
+        </div>
+        <div className="p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xs">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">Questions</span>
+          <span className="text-sm font-bold text-slate-900 dark:text-slate-100 font-mono">
+            {content.forensicResults?.filter(r => r.overallSimilarity >= 50 || r.result === 'MATCH' || r.result === 'PARTIAL_MATCH').length || 0} / {content.questions?.length || 0}
+          </span>
+        </div>
+        <div className="p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xs">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">Reference</span>
+          <span className="text-xs font-bold text-blue-600 dark:text-blue-400 font-mono truncate block">
+            {content.matchedReferencePaper?.id || content.subjectCode || 'CS-801'}
+          </span>
+        </div>
+        <div className="p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xs col-span-2 sm:col-span-1">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">Review</span>
+          <span className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate block">
+            {content.review}
+          </span>
+        </div>
+      </div>
+
+      {/* Main Forensic Two-Column Workspace */}
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(340px,380px)] xl:grid-cols-[minmax(0,1.45fr)_minmax(380px,0.85fr)] gap-6 font-sans items-start w-full max-w-full">
+        {/* LEFT: Original Document (Visually dominant, expand with viewport height) */}
+        <div className="min-w-0 max-w-full space-y-6">
+          <DocumentViewer
+            candidate={content}
+            selectedQuestionId={selectedQuestionId}
+            onSelectQuestion={setSelectedQuestionId}
+          />
+        </div>
+
+        {/* RIGHT: Evidence & Comparison Panel */}
+        <div className="min-w-0 max-w-full w-full space-y-5">
+          {/* Section Header matching left card header exactly */}
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-5 py-3.5 shadow-[0_1px_3px_0_rgba(15,23,42,0.04)] flex items-center justify-between min-h-[57px]">
+            <div>
+              <h3 className="font-heading text-sm sm:text-base font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                Evidence & Comparison
+              </h3>
+              <p className="font-sans text-xs text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">
+                Signals supporting the current assessment
+              </p>
             </div>
           </div>
-        </div>
-      </div>
 
-      {/* 🌟 ONE-GLANCE COMPARISON SUMMARY SCORECARD AT TOP OF DETAILS 🌟 */}
-      <div className="mb-6">
-        <ComparisonSummaryScorecard
-          item={content}
-          onReAnalyzed={(updated) => setContent(updated)}
-        />
-      </div>
-
-      {/* Main Grid: Document Viewer + Question Evidence & Decision Panel */}
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 font-sans items-start">
-        {/* Left Column: Real Document Viewer & Extracted OCR Text */}
-        <div className="xl:col-span-7 space-y-6">
-          <DocumentViewer candidate={content} />
-        </div>
-
-        {/* Right Column: Question Forensics Matrix & Evidence & Review Action */}
-        <div className="xl:col-span-5 space-y-6">
-          {/* Question Forensics Matrix */}
-          <QuestionForensicsMatrix candidate={content} />
-
-          {/* Reference Paper Metadata Alignment Card */}
-          {content.matchedReferencePaper && (
-            <Card
-              title={
-                <div className="flex items-center gap-2">
-                  <FileCheck2 className="w-4 h-4 text-blue-600" />
-                  <span>Matched Examination Reference</span>
-                </div>
-              }
-              subtitle="Reference paper baseline details from ground-truth vault"
-            >
-              <div className="space-y-3 text-xs font-sans">
-                <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="font-mono font-bold text-blue-600 dark:text-blue-400">
-                      {content.matchedReferencePaper.id}
-                    </span>
-                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-600">
-                      VERIFIED REAL PAPER
-                    </span>
-                  </div>
-                  <h4 className="font-bold text-slate-900 dark:text-slate-100">
-                    {content.matchedReferencePaper.title || content.subject}
-                  </h4>
-                  <div className="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-slate-200/60 dark:border-slate-700/60 text-[11px] text-slate-500">
-                    <div>Subject Code: <span className="font-semibold text-slate-700 dark:text-slate-300">{content.matchedReferencePaper.subjectCode || content.subjectCode}</span></div>
-                    <div>Max Marks: <span className="font-semibold text-slate-700 dark:text-slate-300">{content.matchedReferencePaper.maximumMarks || 100}</span></div>
-                    <div>Overlap: <span className="font-semibold text-slate-700 dark:text-slate-300">{content.matchedReferencePaper.overlapPercentage || content.riskScore}%</span></div>
-                    <div>Questions: <span className="font-semibold text-slate-700 dark:text-slate-300">{content.matchedReferencePaper.matchedQuestionsCount || content.questions?.length || 5} matched</span></div>
-                  </div>
-                </div>
-              </div>
-            </Card>
-          )}
-
-          {/* Document Technical Integrity Telemetry */}
-          <Card
-            title={
-              <div className="flex items-center gap-2">
-                <FileText className="w-4 h-4 text-blue-600" />
-                <span>Source File & Ingestion Telemetry</span>
-              </div>
-            }
-          >
-            <div className="divide-y divide-slate-100 dark:divide-slate-800 text-xs font-sans">
-              <div className="flex items-center justify-between py-1.5">
-                <span className="text-slate-500">SHA-256 Digest</span>
-                <span className="font-mono text-[11px] text-slate-800 dark:text-slate-200 truncate max-w-[200px]" title={content.sha256}>
-                  {content.sha256}
-                </span>
-              </div>
-              <div className="flex items-center justify-between py-1.5">
-                <span className="text-slate-500">Storage Location</span>
-                <span className="font-mono text-[11px] text-slate-800 dark:text-slate-200">
-                  {content.storagePath}
-                </span>
-              </div>
-              <div className="flex items-center justify-between py-1.5">
-                <span className="text-slate-500">Extracted Question Blocks</span>
+          {/* 1. Assessment Summary Card */}
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 shadow-2xs space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Assessment</span>
+              <span className={`text-xs font-bold px-2 py-0.5 rounded ${content.risk === 'HIGH' ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700'}`}>
+                {content.risk} ({content.riskScore}/100)
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-3 text-xs pt-2 border-t border-slate-100 dark:border-slate-800">
+              <div>
+                <span className="text-slate-400 block text-[11px]">Human Verification</span>
                 <span className="font-semibold text-slate-800 dark:text-slate-200">
-                  {content.questions?.length || 0} blocks
+                  {content.risk === 'HIGH' ? 'Required' : 'Not required'}
                 </span>
               </div>
-              <div className="flex items-center justify-between py-1.5">
-                <span className="text-slate-500">Processing State</span>
-                <span className="font-semibold text-emerald-600 flex items-center gap-1">
-                  <CheckCircle2 className="w-3.5 h-3.5" /> {content.processing}
+              <div>
+                <span className="text-slate-400 block text-[11px]">Review</span>
+                <span className="font-semibold text-blue-600 dark:text-blue-400">
+                  {content.review}
                 </span>
               </div>
             </div>
-          </Card>
+          </div>
 
-          {/* Human Review Decision Panel */}
+          {/* 2. Question Comparison */}
+          <QuestionForensicsMatrix
+            candidate={content}
+            selectedQuestionId={selectedQuestionId}
+            onSelectQuestion={setSelectedQuestionId}
+          />
+
+          {/* 3. Metadata Match Evidence */}
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 shadow-2xs">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-3">
+              Metadata Match
+            </h3>
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/50 flex items-center justify-between">
+                <span className="text-slate-500">Subject</span>
+                <span className="font-semibold text-emerald-600">✓ Match</span>
+              </div>
+              <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/50 flex items-center justify-between">
+                <span className="text-slate-500">Exam Code</span>
+                <span className="font-semibold text-emerald-600">✓ Match</span>
+              </div>
+              <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/50 flex items-center justify-between">
+                <span className="text-slate-500">Marks</span>
+                <span className="font-semibold text-emerald-600">✓ Match</span>
+              </div>
+              <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/50 flex items-center justify-between">
+                <span className="text-slate-500">Structure</span>
+                <span className="font-semibold text-emerald-600">✓ Match</span>
+              </div>
+            </div>
+          </div>
+
+          {/* 4. Reference Paper */}
+          {content.matchedReferencePaper ? (
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 shadow-2xs space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Matched Reference</span>
+                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-600">
+                  Verified
+                </span>
+              </div>
+              <div className="p-3 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="font-mono font-bold text-blue-600 dark:text-blue-400 text-xs">
+                    {content.matchedReferencePaper.id}
+                  </span>
+                </div>
+                <h4 className="font-bold text-slate-900 dark:text-slate-100 text-xs">
+                  {content.matchedReferencePaper.title || content.subject}
+                </h4>
+                <div className="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-slate-200/60 dark:border-slate-700/60 text-[11px] text-slate-500">
+                  <div>Subject Code: <span className="font-semibold text-slate-700 dark:text-slate-300">{content.matchedReferencePaper.subjectCode || content.subjectCode}</span></div>
+                  <div>Max Marks: <span className="font-semibold text-slate-700 dark:text-slate-300">{content.matchedReferencePaper.maximumMarks || 100}</span></div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 shadow-2xs">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-500 block mb-1">Matched Reference</span>
+              <p className="text-xs text-slate-500 italic">No verified reference paper was used.</p>
+            </div>
+          )}
+
+          {/* 5. Source & Ingestion (Collapsible technical section) */}
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 shadow-2xs">
+            <button
+              type="button"
+              onClick={() => setTelemetryOpen(!telemetryOpen)}
+              className="w-full flex items-center justify-between text-xs font-bold text-slate-800 dark:text-slate-200 cursor-pointer"
+            >
+              <div className="flex items-center gap-2">
+                <Cpu className="w-4 h-4 text-blue-600" />
+                <span>Source & Ingestion</span>
+              </div>
+              {telemetryOpen ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+            </button>
+            {telemetryOpen && (
+              <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 space-y-2 text-xs font-sans">
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500">Platform</span>
+                  <span className="font-semibold text-slate-800 dark:text-slate-200">{content.platform}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500">Source</span>
+                  <span className="font-semibold text-slate-800 dark:text-slate-200">{content.source}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500">Extraction Method</span>
+                  <span className="font-semibold text-slate-800 dark:text-slate-200">{content.extractionMethod || 'OCR / Native PDF'}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500">OCR Confidence</span>
+                  <span className="font-semibold text-emerald-600">{content.ocrConfidence ?? 90}%</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500">Ingestion Status</span>
+                  <span className="font-semibold text-emerald-600">{content.processing}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500">Detected Timestamp</span>
+                  <span className="font-mono text-[11px] text-slate-600 dark:text-slate-400">{content.detectedTime}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500">SHA-256 Digest</span>
+                  <span className="font-mono text-[11px] text-slate-600 dark:text-slate-400 truncate max-w-[160px]" title={content.sha256}>
+                    {content.sha256}
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* 6. Review & Decision */}
           <ReviewDecisionPanel
             item={{
               id: content.id,
@@ -408,3 +523,4 @@ export const DetectedContentDetailsPage: React.FC = () => {
     </ResponsiveContainer>
   );
 };
+

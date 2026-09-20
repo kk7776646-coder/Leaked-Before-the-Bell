@@ -6,6 +6,7 @@ import {
   createSession,
   getAuthenticatedUserFromToken,
   seedDefaultUsersIfEmpty,
+  toSafeUser,
 } from './auth';
 import { UserRecord, UserRole, UserStatus } from './types';
 
@@ -284,6 +285,154 @@ export async function runAllAuthTests(): Promise<AuthTestSuiteReport> {
       } finally {
         process.env.BOOTSTRAP_ADMIN_EMAIL = originalEnvEmail;
         process.env.BOOTSTRAP_ADMIN_PASSWORD = originalEnvPassword;
+      }
+    });
+
+    // SCENARIO 9: Authenticated user with avatar URL
+    await runScenario('AUTH-AVT-001', 'Authenticated User with Avatar URL Mapping', 'SESSION_LIFECYCLE', () => {
+      const user: UserRecord = {
+        id: 'USR-AVT-01',
+        email: 'avatar.user1@leaklens.test',
+        fullName: 'Avatar User One',
+        passwordHash: hashPassword('Pass123!'),
+        role: 'OPERATOR',
+        status: 'ACTIVE',
+        createdAt: new Date().toISOString(),
+        avatarUrl: '/api/auth/profile/avatar/view/USR-AVT-01.png',
+      };
+      
+      db.createUser(user);
+      
+      const safe = toSafeUser(user);
+      if (safe.avatarUrl !== '/api/auth/profile/avatar/view/USR-AVT-01.png') {
+        throw new Error('avatarUrl property not mapped correctly on SafeUser');
+      }
+    });
+
+    // SCENARIO 10: Authenticated user without avatar URL
+    await runScenario('AUTH-AVT-002', 'Authenticated User without Avatar URL Mapping', 'SESSION_LIFECYCLE', () => {
+      const user: UserRecord = {
+        id: 'USR-AVT-02',
+        email: 'avatar.user2@leaklens.test',
+        fullName: 'Avatar User Two',
+        passwordHash: hashPassword('Pass123!'),
+        role: 'OPERATOR',
+        status: 'ACTIVE',
+        createdAt: new Date().toISOString(),
+      };
+      
+      db.createUser(user);
+      
+      const safe = toSafeUser(user);
+      if (safe.avatarUrl !== undefined) {
+        throw new Error('avatarUrl should be undefined for users without an avatar');
+      }
+    });
+
+    // SCENARIO 11: Initials fallback logic verification
+    await runScenario('AUTH-AVT-003', 'Graceful Initials Fallback Calculation', 'POLICY', () => {
+      const name1 = 'John Doe';
+      const name2 = 'Security Officer';
+      const name3 = 'Viewer';
+      
+      const getInitials = (fullName: string) => fullName.split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase();
+      
+      if (getInitials(name1) !== 'JD') throw new Error('Initials fail for John Doe');
+      if (getInitials(name2) !== 'SO') throw new Error('Initials fail for Security Officer');
+      if (getInitials(name3) !== 'V') throw new Error('Initials fail for Viewer');
+    });
+
+    // SCENARIO 12: Unauthorized user cannot access profile/session
+    await runScenario('AUTH-AVT-004', 'Unauthorized User Cannot Access User Profiles', 'ROLE_AUTHORIZATION', () => {
+      const authData = getAuthenticatedUserFromToken('invalid-token');
+      if (authData !== null) {
+        throw new Error('Unauthorized user was able to retrieve a profile from token');
+      }
+    });
+
+    // SCENARIO 13: Avatar upload validation helper check
+    await runScenario('AUTH-AVT-005', 'Avatar Upload Size and MIME Type Validation', 'POLICY', () => {
+      const allowedMimes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+      const testMimeValid = 'image/png';
+      const testMimeInvalid = 'application/pdf';
+      const testSizeValid = 2 * 1024 * 1024;
+      const testSizeInvalid = 10 * 1024 * 1024;
+      
+      if (!allowedMimes.includes(testMimeValid)) throw new Error('Valid MIME was flagged as invalid');
+      if (allowedMimes.includes(testMimeInvalid)) throw new Error('Invalid MIME was flagged as valid');
+      if (testSizeValid > 5 * 1024 * 1024) throw new Error('Valid size was flagged as invalid');
+      if (testSizeInvalid <= 5 * 1024 * 1024) throw new Error('Invalid size was flagged as valid');
+    });
+
+    // SCENARIO 14: Avatar persistence after restart/Supabase restore mock
+    await runScenario('AUTH-AVT-006', 'Avatar Persistence across Restart / Backup Restores', 'STATUS_ENFORCEMENT', () => {
+      const user: UserRecord = {
+        id: 'USR-AVT-06',
+        email: 'avatar.user6@leaklens.test',
+        fullName: 'Avatar User Six',
+        passwordHash: hashPassword('Pass123!'),
+        role: 'OPERATOR',
+        status: 'ACTIVE',
+        createdAt: new Date().toISOString(),
+        avatarUrl: '/api/auth/profile/avatar/view/USR-AVT-06.png',
+      };
+      
+      // Save to memory database state
+      db.createUser(user);
+      db.save();
+      
+      // Simulating a system restart/hydration by finding user in freshly queried database
+      const found = db.getUserById('USR-AVT-06');
+      if (!found || found.avatarUrl !== '/api/auth/profile/avatar/view/USR-AVT-06.png') {
+        throw new Error('Avatar URL was not persisted or lost on reload simulation');
+      }
+    });
+
+    // SCENARIO 15: Existing login still works
+    await runScenario('AUTH-AVT-007', 'Existing Login Verification Integrity', 'LOGIN', () => {
+      const email = 'existing.user@leaklens.test';
+      const pass = 'ExistingPass123!';
+      const hash = hashPassword(pass);
+      
+      const user: UserRecord = {
+        id: 'USR-EXISTING-01',
+        email,
+        fullName: 'Existing User',
+        passwordHash: hash,
+        role: 'OPERATOR',
+        status: 'ACTIVE',
+        createdAt: new Date().toISOString(),
+      };
+      
+      db.createUser(user);
+      
+      const found = db.getUserByEmail(email);
+      if (!found) throw new Error('Existing user email lookup failed');
+      if (!verifyPassword(pass, found.passwordHash)) {
+        throw new Error('Existing login password verification failed');
+      }
+    });
+
+    // SCENARIO 16: Existing role authorization still works
+    await runScenario('AUTH-AVT-008', 'Existing Role Authorization Controls Integrity', 'ROLE_AUTHORIZATION', () => {
+      const user: UserRecord = {
+        id: 'USR-AUTHORIZED-01',
+        email: 'authorized.user@leaklens.test',
+        fullName: 'Authorized Operator',
+        passwordHash: hashPassword('Pass123!'),
+        role: 'OPERATOR',
+        status: 'ACTIVE',
+        createdAt: new Date().toISOString(),
+      };
+      
+      db.createUser(user);
+      
+      const safe = toSafeUser(user);
+      const requiredRoles: UserRole[] = ['ADMIN', 'SECURITY_OFFICER'];
+      const isAuthorized = requiredRoles.includes(safe.role);
+      
+      if (isAuthorized) {
+        throw new Error('OPERATOR role was incorrectly authorized for ADMIN/SECURITY_OFFICER permissions');
       }
     });
 

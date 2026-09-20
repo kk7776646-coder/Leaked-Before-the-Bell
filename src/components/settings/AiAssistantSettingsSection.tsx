@@ -60,6 +60,7 @@ export const AiAssistantSettingsSection: React.FC = () => {
   // Automated Test Suite State
   const [isRunningTestSuite, setIsRunningTestSuite] = useState(false);
   const [testSuiteReport, setTestSuiteReport] = useState<any | null>(null);
+  const [deleteConfirmation, setDeleteConfirmation] = useState<{ id: string; name: string } | null>(null);
 
   useEffect(() => {
     loadData();
@@ -154,7 +155,8 @@ export const AiAssistantSettingsSection: React.FC = () => {
   // Handle Model Preset Select
   const handleModelPresetSelect = (selectedModelId: string) => {
     const preset = presets.find((p) => p.id === selectedPresetId);
-    const m = preset?.defaultModels.find((mod) => mod.id === selectedModelId);
+    const m = preset?.defaultModels.find((mod) => mod.id === selectedModelId) ||
+              discoveredModels.find((mod) => mod.id === selectedModelId);
     if (m) {
       setModelDisplayName(`${preset?.name || ''} - ${m.name}`);
       setModelName(m.name);
@@ -162,6 +164,7 @@ export const AiAssistantSettingsSection: React.FC = () => {
     } else {
       setModelId(selectedModelId);
       setModelName(selectedModelId);
+      setModelDisplayName(`${preset?.name || 'Custom'} - ${selectedModelId}`);
     }
   };
 
@@ -294,17 +297,8 @@ export const AiAssistantSettingsSection: React.FC = () => {
   };
 
   // Delete Provider
-  const handleDelete = async (id: string, name: string) => {
-    if (!window.confirm(`Are you sure you want to delete configuration for "${name}"?`)) {
-      return;
-    }
-    try {
-      await api.deleteAiProvider(id);
-      showFeedback(`Deleted provider "${name}".`, null);
-      await loadData();
-    } catch (err: any) {
-      showFeedback(null, err.message || 'Failed to delete provider.');
-    }
+  const handleDelete = (id: string, name: string) => {
+    setDeleteConfirmation({ id, name });
   };
 
   // Run Automated 27-Scenario Test Suite
@@ -707,49 +701,70 @@ export const AiAssistantSettingsSection: React.FC = () => {
                 />
               </div>
 
-              {/* Model Selection & ID */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                      Preset Models
-                    </label>
-                    <button
-                      type="button"
-                      onClick={handleDiscoverModels}
-                      disabled={isDiscoveringModels}
-                      className="text-[11px] text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 cursor-pointer"
-                    >
-                      <RefreshCw className={`w-2.5 h-2.5 ${isDiscoveringModels ? 'animate-spin' : ''}`} />
-                      Discover API
-                    </button>
-                  </div>
-                  <select
-                    value={modelId}
-                    onChange={(e) => handleModelPresetSelect(e.target.value)}
-                    className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+              {/* Quick-Fill Preset Option */}
+              <div className="bg-slate-50 dark:bg-slate-900/40 border border-slate-200/60 dark:border-slate-800 rounded-xl p-3">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                    Quick-Fill from Presets (Optional)
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleDiscoverModels}
+                    disabled={isDiscoveringModels}
+                    className="text-[10px] text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 cursor-pointer"
                   >
-                    {discoveredModels.length > 0 ? (
-                      discoveredModels.map((m) => (
+                    <RefreshCw className={`w-2.5 h-2.5 ${isDiscoveringModels ? 'animate-spin' : ''}`} />
+                    Discover API
+                  </button>
+                </div>
+                <select
+                  value=""
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val) {
+                      handleModelPresetSelect(val);
+                    }
+                  }}
+                  className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                >
+                  <option value="">-- Select a preset to auto-fill fields --</option>
+                  {discoveredModels.length > 0 ? (
+                    discoveredModels.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name || m.id}
+                      </option>
+                    ))
+                  ) : (
+                    presets
+                      .find((p) => p.id === selectedPresetId)
+                      ?.defaultModels.map((m) => (
                         <option key={m.id} value={m.id}>
-                          {m.name || m.id}
+                          {m.name} ({m.id})
                         </option>
                       ))
-                    ) : (
-                      presets
-                        .find((p) => p.id === selectedPresetId)
-                        ?.defaultModels.map((m) => (
-                          <option key={m.id} value={m.id}>
-                            {m.name} ({m.id})
-                          </option>
-                        ))
-                    )}
-                  </select>
+                  )}
+                </select>
+              </div>
+
+              {/* Model Registry ID & Model ID manual inputs */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Model Registry ID <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={modelName}
+                    onChange={(e) => setModelName(e.target.value)}
+                    placeholder="e.g. OpenAI GPT-4o"
+                    required
+                    className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                  />
                 </div>
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Model Identifier (Slug) <span className="text-rose-500">*</span>
+                    Model ID <span className="text-rose-500">*</span>
                   </label>
                   <input
                     type="text"
@@ -900,6 +915,51 @@ export const AiAssistantSettingsSection: React.FC = () => {
                 </div>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirmation && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-sm w-full p-6 shadow-2xl animate-in fade-in zoom-in-95 duration-150 text-center">
+            <div className="w-12 h-12 rounded-full bg-rose-50 dark:bg-rose-950/30 border border-rose-100 dark:border-rose-800 flex items-center justify-center mx-auto mb-4">
+              <Trash2 className="w-5 h-5 text-rose-600 dark:text-rose-400" />
+            </div>
+            <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 mb-2">
+              Delete Configuration
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mb-6 leading-relaxed">
+              Are you sure you want to delete the configuration for <strong className="text-slate-800 dark:text-slate-200">"{deleteConfirmation.name}"</strong>? This action is permanent.
+            </p>
+            <div className="flex items-center justify-center gap-3">
+              <Button
+                variant="secondary"
+                size="sm"
+                className="w-24 text-xs cursor-pointer"
+                onClick={() => setDeleteConfirmation(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                className="w-24 bg-rose-600 hover:bg-rose-700 text-white border-rose-600 hover:border-rose-700 text-xs shadow-sm hover:shadow-md cursor-pointer"
+                onClick={async () => {
+                  const { id, name } = deleteConfirmation;
+                  setDeleteConfirmation(null);
+                  try {
+                    await api.deleteAiProvider(id);
+                    showFeedback(`Deleted provider "${name}".`, null);
+                    await loadData();
+                  } catch (err: any) {
+                    showFeedback(null, err.message || 'Failed to delete provider.');
+                  }
+                }}
+              >
+                Delete
+              </Button>
+            </div>
           </div>
         </div>
       )}

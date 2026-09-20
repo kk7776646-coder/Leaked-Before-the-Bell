@@ -1,5 +1,4 @@
 import React from 'react';
-import { Card } from './Card';
 
 interface SummaryCardProps {
   title: string;
@@ -27,10 +26,10 @@ export const SummaryCard: React.FC<SummaryCardProps> = ({
   };
 
   return (
-    <Card hoverEffect className="p-4 sm:p-5 flex flex-col justify-between rounded-xl border-slate-200 dark:border-slate-800/90 shadow-[0_1px_3px_0_rgba(15,23,42,0.04)] h-full">
+    <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 rounded-xl p-4 sm:p-5 flex flex-col justify-between shadow-[0_1px_2px_rgba(0,0,0,0.02)] hover:border-slate-300 dark:hover:border-slate-700/80 hover:shadow-[0_4px_12px_rgba(0,0,0,0.03)] transition-all duration-180 ease-in-out h-full select-none font-sans">
       <div>
         <div className="flex items-center justify-between gap-2">
-          <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider truncate">
+          <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider truncate">
             {title}
           </p>
           <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 shadow-2xs ${iconBgClasses[variant]}`}>
@@ -41,8 +40,12 @@ export const SummaryCard: React.FC<SummaryCardProps> = ({
           <span className={valueClassName}>{value}</span>
         </div>
       </div>
-      {subtitle && <div className="mt-2.5 pt-2 border-t border-slate-100 dark:border-slate-800/60">{subtitle}</div>}
-    </Card>
+      {subtitle && (
+        <div className="mt-2.5 pt-2 border-t border-slate-100 dark:border-slate-800/60 font-sans">
+          {subtitle}
+        </div>
+      )}
+    </div>
   );
 };
 

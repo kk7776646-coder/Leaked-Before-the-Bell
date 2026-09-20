@@ -10,7 +10,7 @@
     --surface-secondary: #edf2f8;
     --card: #ffffff;
     --card-foreground: #090d16;
-    --border: #dce3ed;
+    --border: #e2e8f0;
     --muted: #edf2f8;
     --muted-foreground: #57657d;
     --primary: #1d4ed8;
@@ -39,7 +39,7 @@
     /* Semantic Sidebar Variables - Clean Light Theme */
     --sidebar-background: #ffffff;
     --sidebar-foreground: #090d16;
-    --sidebar-border: #dce3ed;
+    --sidebar-border: #e5e7eb;
     --sidebar-hover: #f1f5f9;
     --sidebar-active: #e8effb;
     --sidebar-active-foreground: #1d4ed8;

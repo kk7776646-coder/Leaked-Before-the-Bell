@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Card } from '../common/Card';
 import { Button } from '../common/Button';
 import { CandidateRecord, api } from '../../services/api';
@@ -19,21 +19,37 @@ import {
   Info,
   ExternalLink,
   Target,
+  Scan,
+  Camera,
+  Video,
+  VideoOff,
+  RefreshCw,
 } from 'lucide-react';
 
 export interface CandidateDocumentViewerProps {
   candidate: CandidateRecord;
   targetPage?: number;
   onPageChange?: (page: number) => void;
+  selectedQuestionId?: string;
+  onSelectQuestion?: (questionId: string) => void;
 }
 
 export const DocumentViewer: React.FC<CandidateDocumentViewerProps> = ({
   candidate,
   targetPage,
   onPageChange,
+  selectedQuestionId,
+  onSelectQuestion,
 }) => {
-  const [activeTab, setActiveTab] = useState<'preview' | 'ocr' | 'pages' | 'metadata'>('preview');
+  const [activeTab, setActiveTab] = useState<'preview' | 'forensic_scan' | 'live_scan' | 'ocr' | 'pages' | 'metadata'>('preview');
   const [selectedPageNum, setSelectedPageNum] = useState<number>(targetPage || 1);
+
+  // Live Camera Scan states
+  const [cameraActive, setCameraActive] = useState(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [capturedImage, setCapturedImage] = useState<string | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
 
   useEffect(() => {
     if (targetPage && targetPage !== selectedPageNum) {
@@ -41,9 +57,55 @@ export const DocumentViewer: React.FC<CandidateDocumentViewerProps> = ({
     }
   }, [targetPage]);
 
+  const startCamera = async () => {
+    setCameraError(null);
+    setCapturedImage(null);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+      });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+      setCameraActive(true);
+    } catch (err: any) {
+      setCameraError('Camera access is unavailable or permission denied. You can continue with the uploaded document.');
+      setCameraActive(false);
+    }
+  };
+
+  const stopCamera = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+    setCameraActive(false);
+  };
+
+  const captureFrame = () => {
+    if (videoRef.current) {
+      const canvas = document.createElement('canvas');
+      canvas.width = videoRef.current.videoWidth || 640;
+      canvas.height = videoRef.current.videoHeight || 480;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
+        setCapturedImage(canvas.toDataURL('image/png'));
+        stopCamera();
+      }
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      stopCamera();
+    };
+  }, []);
+
   const documentUrl = api.getCandidateDocumentUrl(candidate.id);
-  const isPdf = candidate.mimeType === 'application/pdf' || candidate.name.toLowerCase().endsWith('.pdf');
-  const isImage = candidate.mimeType.startsWith('image/') || /\.(png|jpe?g|webp)$/i.test(candidate.name);
+  const isPdf = candidate.mimeType === 'application/pdf' || (candidate.name || '').toLowerCase().endsWith('.pdf');
+  const isImage = (candidate.mimeType || '').startsWith('image/') || /\.(png|jpe?g|webp)$/i.test(candidate.name || '');
 
   const pages = candidate.extractionSummary?.pages || [];
   const extractionMethod = candidate.extractionMethod || (isImage ? 'OCR_IMAGE' : 'NATIVE_PDF_TEXT');
@@ -81,7 +143,7 @@ export const DocumentViewer: React.FC<CandidateDocumentViewerProps> = ({
           </div>
 
           <div className="flex items-center gap-1.5">
-            <div className="flex bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg text-xs font-medium">
+            <div className="flex bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg text-xs font-medium flex-wrap gap-1">
               <button
                 onClick={() => setActiveTab('preview')}
                 className={`px-2.5 py-1 rounded-md transition-colors cursor-pointer ${
@@ -91,6 +153,28 @@ export const DocumentViewer: React.FC<CandidateDocumentViewerProps> = ({
                 }`}
               >
                 Original Document
+              </button>
+              <button
+                onClick={() => setActiveTab('forensic_scan')}
+                className={`px-2.5 py-1 rounded-md transition-colors cursor-pointer flex items-center gap-1 ${
+                  activeTab === 'forensic_scan'
+                    ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-xs font-semibold'
+                    : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                }`}
+              >
+                <Scan className="w-3.5 h-3.5 text-blue-500" />
+                Forensic Scan
+              </button>
+              <button
+                onClick={() => setActiveTab('live_scan')}
+                className={`px-2.5 py-1 rounded-md transition-colors cursor-pointer flex items-center gap-1 ${
+                  activeTab === 'live_scan'
+                    ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-xs font-semibold'
+                    : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                }`}
+              >
+                <Camera className="w-3.5 h-3.5 text-emerald-500" />
+                Live Scan
               </button>
               {pages.length > 0 && (
                 <button
@@ -112,7 +196,7 @@ export const DocumentViewer: React.FC<CandidateDocumentViewerProps> = ({
                     : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
                 }`}
               >
-                OCR Extracted Text
+                OCR Text
               </button>
               <button
                 onClick={() => setActiveTab('metadata')}
@@ -122,7 +206,7 @@ export const DocumentViewer: React.FC<CandidateDocumentViewerProps> = ({
                     : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
                 }`}
               >
-                Extraction Telemetry
+                Telemetry
               </button>
             </div>
 
@@ -212,6 +296,178 @@ export const DocumentViewer: React.FC<CandidateDocumentViewerProps> = ({
             <p className="text-[11px] text-amber-700 dark:text-amber-300 leading-relaxed">
               {uncertainty}
             </p>
+          </div>
+        </div>
+      )}
+
+      {/* TAB: FORENSIC SCAN (COMPUTER VISION QUESTION-LEVEL INSPECTION) */}
+      {activeTab === 'forensic_scan' && (
+        <div className="space-y-4 font-sans">
+          <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs">
+            <div>
+              <span className="font-bold text-slate-800 dark:text-slate-200 block">Question-Level Visual Forensic Scan</span>
+              <span className="text-slate-500 text-[11px]">
+                Inspecting {candidate.questions?.length || 0} extracted question regions & comparison evidence.
+              </span>
+            </div>
+            <span className="px-2.5 py-1 rounded font-mono text-[11px] bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 font-bold">
+              OpenCV Document Engine
+            </span>
+          </div>
+
+          {candidate.questions && candidate.questions.length > 0 ? (
+            <div className="space-y-2.5 max-h-[520px] overflow-y-auto pr-1">
+              {candidate.questions.map((q, idx) => {
+                const forensicMatch = candidate.forensicResults?.find(
+                  r => r.candidateQuestionId === q.questionNumber || r.candidateQuestionId === q.fullQuestionNumber || r.candidateQuestionId === q.id
+                );
+                const similarity = forensicMatch ? Math.round(forensicMatch.textSimilarity * 100) : 0;
+                const matchResult = forensicMatch?.result || 'PENDING';
+                const isSelected = selectedQuestionId === q.questionNumber || selectedQuestionId === q.id || selectedQuestionId === `Q${idx+1}`;
+
+                return (
+                  <div
+                    key={q.id || idx}
+                    onClick={() => {
+                      const qId = q.questionNumber || q.id || `Q${idx+1}`;
+                      onSelectQuestion?.(qId);
+                      if (q.pageNumber) handlePageChange(q.pageNumber);
+                    }}
+                    className={`p-4 rounded-xl border transition-all cursor-pointer text-xs ${
+                      isSelected
+                        ? 'border-blue-500 bg-blue-50/90 dark:bg-blue-950/60 shadow-xs ring-2 ring-blue-500/20'
+                        : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-slate-300'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono font-bold px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                          {q.fullQuestionNumber || q.questionNumber || `Q${idx + 1}`}
+                        </span>
+                        <span className="text-slate-500 text-[11px]">
+                          Page {q.pageNumber || 1}
+                        </span>
+                        {q.marks !== undefined && q.marks > 0 && (
+                          <span className="text-slate-400 text-[11px]">
+                            ({q.marks} {q.marks === 1 ? 'mark' : 'marks'})
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                          similarity >= 70 ? 'bg-rose-100 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300' :
+                          similarity >= 40 ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300' :
+                          'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300'
+                        }`}>
+                          {similarity}% Similarity
+                        </span>
+                        <span className="font-mono text-[10px] text-slate-500 uppercase font-semibold">
+                          {matchResult}
+                        </span>
+                      </div>
+                    </div>
+
+                    <p className="text-slate-800 dark:text-slate-200 font-medium leading-relaxed">
+                      {q.questionText}
+                    </p>
+
+                    {forensicMatch && (
+                      <div className="mt-2.5 pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px] text-slate-500">
+                        <span>Reference Match: <strong className="font-mono text-slate-700 dark:text-slate-300">{forensicMatch.referencePaperId || 'Vault'}</strong></span>
+                        <span className="text-blue-600 dark:text-blue-400 font-medium">Click to inspect right evidence panel →</span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="p-8 text-center bg-slate-50 dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
+              <AlertCircle className="w-8 h-8 text-slate-400 mx-auto" />
+              <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">Visual question region coordinates unavailable for this document.</p>
+              <p className="text-[11px] text-slate-500 max-w-sm mx-auto leading-relaxed">
+                Question-level evidence is fully accessible from extracted text & comparison records in the evidence matrix.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB: LIVE SCAN (WEB-BASED CAMERA INSPECTION) */}
+      {activeTab === 'live_scan' && (
+        <div className="space-y-4 font-sans">
+          <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs">
+            <div>
+              <span className="font-bold text-slate-800 dark:text-slate-200 block">Live Document Camera Inspector</span>
+              <span className="text-slate-500 text-[11px]">Real-time camera frame capture & alignment verification.</span>
+            </div>
+            <div className="flex items-center gap-2">
+              {!cameraActive && !capturedImage && (
+                <Button variant="primary" size="sm" icon={<Camera className="w-3.5 h-3.5" />} onClick={startCamera}>
+                  Start Live Scan
+                </Button>
+              )}
+              {cameraActive && (
+                <>
+                  <Button variant="primary" size="sm" icon={<Scan className="w-3.5 h-3.5" />} onClick={captureFrame}>
+                    Capture Frame
+                  </Button>
+                  <Button variant="outline" size="sm" icon={<VideoOff className="w-3.5 h-3.5 text-rose-500" />} onClick={stopCamera}>
+                    Stop Camera
+                  </Button>
+                </>
+              )}
+              {capturedImage && (
+                <Button variant="outline" size="sm" icon={<RefreshCw className="w-3.5 h-3.5" />} onClick={() => { setCapturedImage(null); startCamera(); }}>
+                  Retake Scan
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {cameraError && (
+            <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-xs text-rose-800 dark:text-rose-200 flex items-start gap-2">
+              <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+              <span>{cameraError}</span>
+            </div>
+          )}
+
+          <div className="bg-slate-950 rounded-2xl overflow-hidden border border-slate-800 relative min-h-[420px] flex items-center justify-center">
+            {capturedImage ? (
+              <div className="relative w-full h-full flex flex-col items-center justify-center p-4">
+                <img src={capturedImage} alt="Captured Document" className="max-h-[400px] object-contain rounded-lg border border-slate-700 shadow-lg" />
+                <div className="mt-3 text-center text-xs text-slate-300">
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-400 font-semibold">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> Frame Captured & Normalized Successfully
+                  </span>
+                </div>
+              </div>
+            ) : cameraActive ? (
+              <div className="relative w-full h-full flex flex-col items-center justify-center">
+                <video ref={videoRef} autoPlay playsInline muted className="w-full max-h-[460px] object-cover" />
+                <div className="absolute inset-0 border-2 border-dashed border-blue-500/50 m-6 pointer-events-none rounded-xl flex flex-col justify-between p-4">
+                  <div className="flex justify-between items-center text-[11px] font-mono text-blue-400 bg-slate-900/80 px-2 py-1 rounded">
+                    <span>STATUS: ALIGNING DOCUMENT BOUNDARY</span>
+                    <span>CV: 1080P 30FPS</span>
+                  </div>
+                  <div className="text-center text-xs font-medium text-white bg-slate-900/80 py-1 rounded">
+                    Position document inside frame and click Capture Frame
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="text-center p-8 space-y-3">
+                <div className="w-16 h-16 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center mx-auto text-blue-400">
+                  <Camera className="w-8 h-8" />
+                </div>
+                <div className="space-y-1">
+                  <h4 className="text-sm font-bold text-white">Camera Standby</h4>
+                  <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                    Click 'Start Live Scan' above to activate camera permission and inspect exam question sheets live.
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

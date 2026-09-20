@@ -163,10 +163,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, onToggle }) => {
                     onMouseEnter={(e) => handleMouseEnter(e, item.label)}
                     onMouseLeave={handleMouseLeave}
                     className={({ isActive }) =>
-                      `flex items-center space-x-3 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-150 active:scale-[0.99] cursor-pointer select-none relative ${
+                      `flex items-center space-x-3 px-3.5 py-2.5 rounded-xl text-xs transition-all duration-300 active:scale-[0.98] cursor-pointer select-none relative border ${
                         isActive
-                          ? 'bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 font-semibold border border-blue-200/80 dark:border-blue-900/60 shadow-2xs'
-                          : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/70 hover:text-slate-900 dark:hover:text-slate-100 border border-transparent'
+                          ? 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white font-bold border-slate-200/90 dark:border-slate-700 shadow-[0_4px_12px_rgba(148,163,184,0.12)] dark:shadow-[0_4px_12px_rgba(2,6,23,0.4)]'
+                          : 'text-slate-600 dark:text-slate-400 border-transparent hover:bg-slate-50/90 dark:hover:bg-slate-800/40 hover:text-slate-900 dark:hover:text-slate-100 hover:border-slate-200/60 dark:hover:border-slate-800/60 hover:shadow-[0_4px_12px_rgba(148,163,184,0.08)] dark:hover:shadow-[0_4px_12px_rgba(2,6,23,0.2)]'
                       } ${isCollapsed ? 'justify-center px-0' : ''}`
                     }
                   >

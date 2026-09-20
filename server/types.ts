@@ -625,6 +625,7 @@ export interface UserRecord {
   status: UserStatus;
   createdAt: string;
   lastLoginAt?: string;
+  avatarUrl?: string;
 }
 
 export interface SafeUser {
@@ -636,6 +637,7 @@ export interface SafeUser {
   status: UserStatus;
   createdAt: string;
   lastLoginAt?: string;
+  avatarUrl?: string;
 }
 
 export interface SessionRecord {

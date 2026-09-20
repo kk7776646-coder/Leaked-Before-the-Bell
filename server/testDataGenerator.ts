@@ -987,62 +987,727 @@ export async function generateFakeNormalPaperFixture(options?: {
  * 4. Generate a comprehensive, multi-document test dataset.
  */
 export async function generateTestDatasetFixture(): Promise<TestDatasetSummary> {
-  const historical1 = await generateTrialHistoricalPaperFixture({
-    subject: 'Compiler Design',
-    subjectCode: 'CS-801',
-    year: 2024,
-  });
+  // Clear previous test data first to ensure clean isolation and no duplicates
+  db.clearTestData();
 
-  const historical2 = await generateTrialHistoricalPaperFixture({
-    subject: 'Operating Systems',
-    subjectCode: 'CS-502',
-    year: 2024,
-  });
+  const now = new Date().toISOString();
+  const uniqueSuffix = Date.now().toString().slice(-4);
 
-  const susp1 = await generateFakeSuspiciousPaperFixture({
-    subject: 'Compiler Design',
-    subjectCode: 'CS-801',
-    platform: 'Telegram',
-    source: '@exam_leaks_tg (Channel)',
-  });
+  // =========================================================================
+  // SCENARIO A: Verified Real Paper (DBMS CS501)
+  // =========================================================================
+  const dbmsQuestions = [
+    {
+      id: "Q1",
+      questionNumber: "1",
+      fullQuestionNumber: "Q1",
+      section: "Section A",
+      questionText: "Differentiate between physical and logical data independence. Why is logical data independence harder to achieve?",
+      normalizedText: "differentiate physical logical data independence why logical data independence harder achieve",
+      marks: 10,
+      confidence: 100,
+      pageNumber: 1
+    },
+    {
+      id: "Q2",
+      questionNumber: "2",
+      fullQuestionNumber: "Q2",
+      section: "Section A",
+      questionText: "Construct an Entity-Relationship (ER) diagram for a university enrollment system. Map it into relational tables.",
+      normalizedText: "construct entity relationship er diagram university enrollment system map relational tables",
+      marks: 15,
+      confidence: 100,
+      pageNumber: 1
+    },
+    {
+      id: "Q3",
+      questionNumber: "3",
+      fullQuestionNumber: "Q3",
+      section: "Section B",
+      questionText: "Explain 3NF and BCNF with concrete examples. Show a decomposition that is dependency preserving.",
+      normalizedText: "explain 3nf bcnf concrete examples show decomposition dependency preserving",
+      marks: 15,
+      confidence: 100,
+      pageNumber: 2
+    },
+    {
+      id: "Q4",
+      questionNumber: "4",
+      fullQuestionNumber: "Q4",
+      section: "Section B",
+      questionText: "Describe the ACID properties of transactions. How does Two-Phase Locking (2PL) ensure serializability?",
+      normalizedText: "describe acid properties transactions how two phase locking 2pl ensure serializability",
+      marks: 10,
+      confidence: 100,
+      pageNumber: 2
+    }
+  ];
 
-  const susp2 = await generateFakeSuspiciousPaperFixture({
-    subject: 'Operating Systems',
-    subjectCode: 'CS-502',
-    platform: 'WhatsApp',
-    source: '+1-800-STUDY-BROADCAST',
-  });
+  const historicalDBMS: HistoricalPaperRecord = {
+    id: `HP-TEST-DBMS-01`,
+    title: `[TEST DATA — FICTIONAL EXAMPLE] Verified Reference Paper for DBMS (CS501)`,
+    subject: "Database Management Systems",
+    subjectCode: "CS501",
+    year: 2026,
+    dateIndexed: now,
+    totalQuestions: 4,
+    status: "Vectorized & Active",
+    fileFormat: "PDF",
+    filename: "TEST_REF_DBMS_CS501.pdf",
+    originalFilename: "TEST_REF_DBMS_CS501.pdf",
+    storagePath: "/fictional/storage/TEST_REF_DBMS_CS501.pdf",
+    fileSize: 10240,
+    sha256: "dbms_reference_fictional_sha256_hash",
+    vectorEmbeddingsCount: 12,
+    ocrSnippet: "DBMS CS501. Differentiate physical and logical data independence...",
+    extractedText: "Verified Reference Paper for CS501 Database Management Systems. Section A contains Q1 and Q2. Section B contains Q3 and Q4. Fictional exam of 2026.",
+    createdAt: now,
+    questions: dbmsQuestions.map(q => ({
+      id: q.id,
+      questionNumber: q.questionNumber,
+      fullQuestionNumber: q.fullQuestionNumber,
+      section: q.section,
+      questionText: q.questionText,
+      marks: q.marks,
+      confidence: q.confidence,
+      pageNumber: q.pageNumber
+    })),
+    isTestData: true,
+    sourceType: "TEST_FIXTURE"
+  };
 
-  const norm1 = await generateFakeNormalPaperFixture({
-    subject: 'Environmental Studies',
-    subjectCode: 'ENV-201',
-    platform: 'Reddit',
-    source: 'r/environmental_studies',
-  });
+  const realDBMS: RealPaperRecord = {
+    id: `RP-TEST-DBMS-01`,
+    documentId: `DOC-TEST-DBMS-01`,
+    filename: "TEST_REF_DBMS_CS501.pdf",
+    originalFilename: "TEST_REF_DBMS_CS501.pdf",
+    storagePath: "/fictional/storage/TEST_REF_DBMS_CS501.pdf",
+    fileSize: 10240,
+    sha256: "dbms_reference_fictional_sha256_hash",
+    subject: "Database Management Systems",
+    subjectCode: "CS501",
+    exam: "Semester Final Examination",
+    examType: "B.Tech VII Semester",
+    year: 2026,
+    semester: "Semester VII",
+    session: "Morning",
+    examDate: "2026-12-05",
+    duration: "3 Hours",
+    maximumMarks: 100,
+    pageCount: 2,
+    verificationStatus: "VERIFIED",
+    verifiedBy: "Controller of Exams",
+    verifiedAt: now,
+    extractedText: historicalDBMS.extractedText,
+    structuredData: {
+      sections: 2,
+      questions: dbmsQuestions.map((q, idx) => ({
+        id: `RP-DBMS-Q-${idx + 1}`,
+        paperId: "RP-TEST-DBMS-01",
+        questionNumber: q.questionNumber,
+        fullQuestionNumber: q.fullQuestionNumber,
+        questionText: q.questionText,
+        normalizedText: q.normalizedText,
+        questionType: "Subjective",
+        topic: q.id === "Q1" || q.id === "Q2" ? "Data Models" : "Normalization & Transactions",
+        difficulty: "MEDIUM",
+        marks: q.marks,
+        required: true,
+        section: q.section,
+        position: idx + 1,
+        pageNumber: q.pageNumber,
+        extractionConfidence: 1.0
+      }))
+    },
+    createdAt: now,
+    updatedAt: now,
+    isTestData: true,
+    sourceType: "TEST_FIXTURE"
+  };
 
-  const norm2 = await generateFakeNormalPaperFixture({
-    subject: 'Organic Chemistry',
-    subjectCode: 'CHM-102',
-    platform: 'Instagram',
-    source: '@chemistry_notes_hub',
-  });
+  db.addHistoricalPaper(historicalDBMS);
+  db.addRealPaper(realDBMS);
 
-  const alerts: AlertRecord[] = [];
-  if (susp1.alert) alerts.push(susp1.alert);
-  if (susp2.alert) alerts.push(susp2.alert);
+  // =========================================================================
+  // SCENARIO B: High-Risk Suspected Leak (Circulation of DBMS CS501 on TG)
+  // =========================================================================
+  const suspDBMSId = `DC-TEST-LEAK-DBMS-${uniqueSuffix}`;
+  const suspCandidate: DetectedContentRecord = {
+    id: suspDBMSId,
+    name: `[SIMULATED HIGH-RISK SCENARIO] Suspected CS501 Paper Circulation`,
+    filename: "test_telegram_dbms_screenshot.jpg",
+    contentType: "Screenshot",
+    mimeType: "image/jpeg",
+    size: 254000,
+    sha256: "test_telegram_leak_sha256_hash",
+    subject: "Database Management Systems",
+    subjectCode: "CS501",
+    platform: "Telegram",
+    source: "@exam_leaks_tg (Channel)",
+    risk: "HIGH",
+    riskScore: 94,
+    confidence: 98,
+    processing: "Completed",
+    review: "Needs Verification",
+    detectedTime: now,
+    uploadedAt: now,
+    status: "ACTIVE",
+    storagePath: "/fictional/storage/test_telegram_dbms_screenshot.jpg",
+    extractedText: "CONFIDENTIAL DATABASE MANAGEMENT SYSTEMS CS501\nQ1. Differentiate physical and logical data independence. Why is logical data independence harder to achieve?\nQ2. Construct an ER diagram for enrollment system.\nQ3. Explain 3NF and BCNF with examples.",
+    pagesCount: 1,
+    hasAssociatedAlert: true,
+    hasAssociatedReview: true,
+    alertId: `AL-TEST-LEAK-DBMS-${uniqueSuffix}`,
+    reviewId: `REV-TEST-LEAK-DBMS-${uniqueSuffix}`,
+    questions: [
+      {
+        id: "CQ1",
+        questionNumber: "1",
+        fullQuestionNumber: "Q1",
+        section: "Section A",
+        questionText: "Differentiate physical and logical data independence. Why is logical data independence harder to achieve?",
+        confidence: 98,
+        pageNumber: 1
+      },
+      {
+        id: "CQ2",
+        questionNumber: "2",
+        fullQuestionNumber: "Q2",
+        section: "Section A",
+        questionText: "Construct an ER diagram for enrollment system.",
+        confidence: 96,
+        pageNumber: 1
+      },
+      {
+        id: "CQ3",
+        questionNumber: "3",
+        fullQuestionNumber: "Q3",
+        section: "Section B",
+        questionText: "Explain 3NF and BCNF with examples.",
+        confidence: 97,
+        pageNumber: 1
+      }
+    ],
+    forensicResults: [
+      {
+        candidateQuestionId: "CQ1",
+        referenceType: "VERIFIED_REAL_PAPER",
+        referencePaperId: "RP-TEST-DBMS-01",
+        referencePaperTitle: "[TEST DATA — FICTIONAL EXAMPLE] Verified Reference Paper for DBMS (CS501)",
+        referenceQuestionId: "RP-DBMS-Q-1",
+        textSimilarity: 92,
+        semanticSimilarity: 95,
+        typeMatch: "MATCH",
+        marksMatch: "MATCH",
+        sectionMatch: "MATCH",
+        numberMatch: "MATCH",
+        positionMatch: "MATCH",
+        topicMatch: "MATCH",
+        contextSimilarity: 90,
+        overallSimilarity: 94,
+        result: "MATCH",
+        confidence: "HIGH",
+        evidence: []
+      }
+    ],
+    metadataComparison: {
+      matchedExamId: "EX-DBMS-01",
+      matchedExamName: "Database Management Systems (CS501)",
+      subjectMatch: true,
+      codeMatch: true,
+      marksMatch: true,
+      structureMatch: true,
+      orderMatch: true,
+      questionOverlapScore: 94,
+      summary: "Critically high overlap (94%) detected in structural components and verbatim text of 3 questions with the verified CS501 reference paper."
+    },
+    matchedReferencePaper: {
+      id: "RP-TEST-DBMS-01",
+      title: "[TEST DATA — FICTIONAL EXAMPLE] Verified Reference Paper for DBMS (CS501)",
+      type: "REAL_PAPER",
+      overlapPercentage: 94,
+      matchedQuestionsCount: 3,
+      totalQuestionsCount: 4
+    },
+    isTestData: true,
+    sourceType: "TEST_FIXTURE"
+  };
 
-  const reviews: ReviewItemRecord[] = [];
-  if (susp1.review) reviews.push(susp1.review);
-  if (susp2.review) reviews.push(susp2.review);
+  const suspAlert: AlertRecord = {
+    id: `AL-TEST-LEAK-DBMS-${uniqueSuffix}`,
+    candidateId: suspDBMSId,
+    candidateName: `[SIMULATED HIGH-RISK SCENARIO] Suspected CS501 Paper Circulation`,
+    subject: "Database Management Systems",
+    subjectCode: "CS501",
+    severity: "CRITICAL",
+    title: "Critical Overlap with Verified DBMS Paper",
+    description: "Telegram post matching verified questions for DBMS Semester Exam (CS501) with 94% confidence.",
+    similarityScore: 94,
+    status: "ACTIVE",
+    detectedTime: now,
+    timestamp: now,
+    platform: "Telegram",
+    matchedReferenceId: "RP-TEST-DBMS-01",
+    matchedReferenceTitle: "[TEST DATA — FICTIONAL EXAMPLE] Verified Reference Paper for DBMS (CS501)",
+    evidenceSummary: "Verbatim matching question structures found across sections. Urgently review source channel Telegram @exam_leaks_tg.",
+    isTestData: true,
+    sourceType: "TEST_FIXTURE"
+  };
+
+  const suspReview: ReviewItemRecord = {
+    id: `REV-TEST-LEAK-DBMS-${uniqueSuffix}`,
+    candidateId: suspDBMSId,
+    subject: "Database Management Systems",
+    subjectCode: "CS501",
+    riskScore: 94,
+    riskLevel: "HIGH",
+    evidenceCount: 3,
+    detectedTime: now,
+    reviewerStatus: "Needs Verification",
+    priority: "High Priority",
+    isTestData: true,
+    sourceType: "TEST_FIXTURE"
+  };
+
+  db.addCandidate(suspCandidate);
+  db.addAlert(suspAlert);
+  db.addReview(suspReview);
+
+  // =========================================================================
+  // SCENARIO C: Fake Leak / Marketing Gimmick (Instagram @coaching_pro_prep)
+  // =========================================================================
+  const fakeDBMSId = `DC-TEST-FAKE-LEAK-${uniqueSuffix}`;
+  const fakeCandidate: DetectedContentRecord = {
+    id: fakeDBMSId,
+    name: `[SIMULATED FALSE-CLAIM SCENARIO] Coaching Centre 'Leaked Paper' Promotion`,
+    filename: "instagram_promotional_gimmick.jpg",
+    contentType: "Screenshot",
+    mimeType: "image/jpeg",
+    size: 198000,
+    sha256: "test_instagram_gimmick_sha256_hash",
+    subject: "Database Management Systems",
+    subjectCode: "CS-MISMATCH",
+    platform: "Instagram",
+    source: "@coaching_pro_prep (Profile)",
+    risk: "LOW",
+    riskScore: 15,
+    confidence: 95,
+    processing: "Completed",
+    review: "Reviewed",
+    detectedTime: now,
+    uploadedAt: now,
+    status: "ACTIVE",
+    storagePath: "/fictional/storage/instagram_promotional_gimmick.jpg",
+    extractedText: "JOIN COACHING PRO PREP NOW! LEAKED PAPERS FOR FINAL EXAMS AVAILABLE!\nQ1. What is a DBMS? Explain its components.\nQ2. Explain Primary Key vs Foreign Key.\nQ3. Write SQL query to find second highest salary.",
+    pagesCount: 1,
+    hasAssociatedAlert: true,
+    hasAssociatedReview: true,
+    alertId: `AL-TEST-FAKE-LEAK-${uniqueSuffix}`,
+    reviewId: `REV-TEST-FAKE-LEAK-${uniqueSuffix}`,
+    questions: [
+      { id: "FQ1", questionNumber: "1", fullQuestionNumber: "Q1", section: "Practice", questionText: "What is a DBMS? Explain its components.", confidence: 99 },
+      { id: "FQ2", questionNumber: "2", fullQuestionNumber: "Q2", section: "Practice", questionText: "Explain Primary Key vs Foreign Key.", confidence: 99 },
+      { id: "FQ3", questionNumber: "3", fullQuestionNumber: "Q3", section: "Practice", questionText: "Write SQL query to find second highest salary.", confidence: 99 }
+    ],
+    forensicResults: [],
+    metadataComparison: {
+      subjectMatch: true,
+      codeMatch: false,
+      marksMatch: false,
+      structureMatch: false,
+      orderMatch: false,
+      questionOverlapScore: 0,
+      summary: "Comparison reveals 0% question overlap. Contains generic textbook practice questions with promotional marketing keywords."
+    },
+    isTestData: true,
+    sourceType: "TEST_FIXTURE"
+  };
+
+  const fakeAlert: AlertRecord = {
+    id: `AL-TEST-FAKE-LEAK-${uniqueSuffix}`,
+    candidateId: fakeDBMSId,
+    candidateName: `[SIMULATED FALSE-CLAIM SCENARIO] Coaching Centre 'Leaked Paper' Promotion`,
+    subject: "Database Management Systems",
+    subjectCode: "CS-MISMATCH",
+    severity: "LOW",
+    title: "False Promotional Claim Detected",
+    description: "Instagram post claiming 'Leaked Exams' resolved as standard textbook prep material (0% overlap).",
+    similarityScore: 0,
+    status: "RESOLVED",
+    detectedTime: now,
+    timestamp: now,
+    platform: "Instagram",
+    evidenceSummary: "Instagram marketing post from @coaching_pro_prep has zero structural overlap with verified CS501 exams.",
+    isTestData: true,
+    sourceType: "TEST_FIXTURE"
+  };
+
+  const fakeReview: ReviewItemRecord = {
+    id: `REV-TEST-FAKE-LEAK-${uniqueSuffix}`,
+    candidateId: fakeDBMSId,
+    subject: "Database Management Systems",
+    subjectCode: "CS-MISMATCH",
+    riskScore: 15,
+    riskLevel: "LOW",
+    evidenceCount: 0,
+    detectedTime: now,
+    reviewerStatus: "Completed",
+    priority: "Low Priority",
+    decisionNotes: "Checked against CS501 exam paper. Falsified claim; contains general DBMS coaching questions. Dismissed.",
+    isTestData: true,
+    sourceType: "TEST_FIXTURE"
+  };
+
+  db.addCandidate(fakeCandidate);
+  db.addAlert(fakeAlert);
+  db.addReview(fakeReview);
+
+  // =========================================================================
+  // SCENARIO D: Ambiguous Case (Blurry Screenshot on WhatsApp)
+  // =========================================================================
+  const ambDBMSId = `DC-TEST-AMBIGUOUS-${uniqueSuffix}`;
+  const ambCandidate: DetectedContentRecord = {
+    id: ambDBMSId,
+    name: `[SIMULATED AMBIGUOUS SCENARIO] Blurry CS501 Screenshot — Insufficient Evidence`,
+    filename: "blurry_whatsapp_capture.jpg",
+    contentType: "Screenshot",
+    mimeType: "image/jpeg",
+    size: 112000,
+    sha256: "test_blurry_amb_sha256_hash",
+    subject: "Database Management Systems",
+    subjectCode: "CS501",
+    platform: "WhatsApp",
+    source: "+1-202-555-0143",
+    risk: "REVIEW REQUIRED",
+    riskScore: 52,
+    confidence: 48,
+    processing: "Completed",
+    review: "Needs Verification",
+    detectedTime: now,
+    uploadedAt: now,
+    status: "ACTIVE",
+    storagePath: "/fictional/storage/blurry_whatsapp_capture.jpg",
+    extractedText: "DATABA... SYS... ...erence physical... ... logical data... ... diagram ... university...",
+    pagesCount: 1,
+    hasAssociatedAlert: true,
+    hasAssociatedReview: true,
+    alertId: `AL-TEST-AMBIGUOUS-${uniqueSuffix}`,
+    reviewId: `REV-TEST-AMBIGUOUS-${uniqueSuffix}`,
+    questions: [
+      { id: "AQ1", questionNumber: "UNKNOWN", fullQuestionNumber: "UNKNOWN", section: "UNKNOWN", questionText: "...erence physical... ... logical data...", confidence: 42 }
+    ],
+    forensicResults: [],
+    metadataComparison: {
+      subjectMatch: true,
+      codeMatch: true,
+      marksMatch: false,
+      structureMatch: "UNCERTAIN",
+      orderMatch: "UNCERTAIN",
+      questionOverlapScore: 40,
+      summary: "Low confidence OCR detection of fragments. Matches keywords for CS501 questions, but evidence is insufficient for positive match."
+    },
+    isTestData: true,
+    sourceType: "TEST_FIXTURE"
+  };
+
+  const ambAlert: AlertRecord = {
+    id: `AL-TEST-AMBIGUOUS-${uniqueSuffix}`,
+    candidateId: ambDBMSId,
+    candidateName: `[SIMULATED AMBIGUOUS SCENARIO] Blurry CS501 Screenshot — Insufficient Evidence`,
+    subject: "Database Management Systems",
+    subjectCode: "CS501",
+    severity: "MEDIUM",
+    title: "Partial Match on Blurry Source Material",
+    description: "Ambiguous WhatsApp image containing fragmented OCR text matching DBMS (CS501) concepts.",
+    similarityScore: 40,
+    status: "INVESTIGATING",
+    detectedTime: now,
+    timestamp: now,
+    platform: "WhatsApp",
+    evidenceSummary: "Low OCR quality (48% confidence). Contains key terms 'physical... logical data'. Manual audit recommended.",
+    isTestData: true,
+    sourceType: "TEST_FIXTURE"
+  };
+
+  const ambReview: ReviewItemRecord = {
+    id: `REV-TEST-AMBIGUOUS-${uniqueSuffix}`,
+    candidateId: ambDBMSId,
+    subject: "Database Management Systems",
+    subjectCode: "CS501",
+    riskScore: 52,
+    riskLevel: "REVIEW REQUIRED",
+    evidenceCount: 1,
+    detectedTime: now,
+    reviewerStatus: "Assigned",
+    assignedReviewer: "Senior Security Auditor",
+    priority: "Standard Priority",
+    isTestData: true,
+    sourceType: "TEST_FIXTURE"
+  };
+
+  db.addCandidate(ambCandidate);
+  db.addAlert(ambAlert);
+  db.addReview(ambReview);
+
+  // =========================================================================
+  // SCENARIO E: Multi-page paper (Computer Networks CS402)
+  // =========================================================================
+  const multiId = `DC-TEST-MULTIPAGE-${uniqueSuffix}`;
+  const multiCandidate: DetectedContentRecord = {
+    id: multiId,
+    name: `[SIMULATED MULTI-PAGE SCENARIO] Computer Networks Examination (CS402)`,
+    filename: "test_telegram_cn_4pages.pdf",
+    contentType: "PDF",
+    mimeType: "application/pdf",
+    size: 489000,
+    sha256: "test_multipage_cn_sha256_hash",
+    subject: "Computer Networks",
+    subjectCode: "CS402",
+    platform: "Telegram",
+    source: "@cn_study_hub",
+    risk: "REVIEW REQUIRED",
+    riskScore: 65,
+    confidence: 92,
+    processing: "Completed",
+    review: "Pending",
+    detectedTime: now,
+    uploadedAt: now,
+    status: "ACTIVE",
+    storagePath: "/fictional/storage/test_telegram_cn_4pages.pdf",
+    extractedText: "Computer Networks CS402 exam paper. Page 1: Q1. Explain OSI reference model. Page 2: Q2. Differentiate IPv4 and IPv6. Page 3: Q3. Explain distance vector routing. Page 4: Q4. Describe TCP 3-way handshake.",
+    pagesCount: 4,
+    hasAssociatedAlert: false,
+    hasAssociatedReview: true,
+    reviewId: `REV-TEST-MULTIPAGE-${uniqueSuffix}`,
+    questions: [
+      { id: "MQ1", questionNumber: "1", fullQuestionNumber: "Q1", section: "Page 1", questionText: "Explain OSI reference model in detail. What are the roles of transport layer vs network layer?", confidence: 98, pageNumber: 1 },
+      { id: "MQ2", questionNumber: "2", fullQuestionNumber: "Q2", section: "Page 2", questionText: "Differentiate IPv4 and IPv6 headers with a neat schematic representation.", confidence: 97, pageNumber: 2 },
+      { id: "MQ3", questionNumber: "3", fullQuestionNumber: "Q3", section: "Page 3", questionText: "Explain distance vector routing algorithm and count-to-infinity loop resolution.", confidence: 96, pageNumber: 3 },
+      { id: "MQ4", questionNumber: "4", fullQuestionNumber: "Q4", section: "Page 4", questionText: "Describe TCP 3-way handshake connection establishment and graceful connection teardown.", confidence: 99, pageNumber: 4 }
+    ],
+    forensicResults: [],
+    metadataComparison: {
+      subjectMatch: true,
+      codeMatch: true,
+      marksMatch: false,
+      structureMatch: "PARTIAL",
+      orderMatch: "UNCERTAIN",
+      questionOverlapScore: 50,
+      summary: "Multi-page PDF contains extensive Computer Networks (CS402) curriculum. Structurally organized over 4 logical pages."
+    },
+    extractionSummary: {
+      documentType: "TEXT_PDF",
+      totalPages: 4,
+      nativeTextPagesCount: 4,
+      ocrPagesCount: 0,
+      overallExtractionMethod: "NATIVE_TEXT",
+      overallOcrConfidence: 100,
+      hasLowConfidencePages: false,
+      pages: [
+        { pageNumber: 1, extractionMethod: "NATIVE_TEXT", text: "Page 1 Content: Q1. Explain OSI reference model in detail.", ocrConfidence: 100, processingStatus: "COMPLETED", nativeTextLength: 120 },
+        { pageNumber: 2, extractionMethod: "NATIVE_TEXT", text: "Page 2 Content: Q2. Differentiate IPv4 and IPv6 headers.", ocrConfidence: 100, processingStatus: "COMPLETED", nativeTextLength: 110 },
+        { pageNumber: 3, extractionMethod: "NATIVE_TEXT", text: "Page 3 Content: Q3. Explain distance vector routing algorithm.", ocrConfidence: 100, processingStatus: "COMPLETED", nativeTextLength: 130 },
+        { pageNumber: 4, extractionMethod: "NATIVE_TEXT", text: "Page 4 Content: Q4. Describe TCP 3-way handshake process.", ocrConfidence: 100, processingStatus: "COMPLETED", nativeTextLength: 140 }
+      ],
+      rawTextLength: 500,
+      extractedAt: now
+    },
+    extractionMethod: "MIXED",
+    isTestData: true,
+    sourceType: "TEST_FIXTURE"
+  };
+
+  const multiReview: ReviewItemRecord = {
+    id: `REV-TEST-MULTIPAGE-${uniqueSuffix}`,
+    candidateId: multiId,
+    subject: "Computer Networks",
+    subjectCode: "CS402",
+    riskScore: 65,
+    riskLevel: "REVIEW REQUIRED",
+    evidenceCount: 4,
+    detectedTime: now,
+    reviewerStatus: "Assigned",
+    assignedReviewer: "Analyst Beta",
+    priority: "Standard Priority",
+    isTestData: true,
+    sourceType: "TEST_FIXTURE"
+  };
+
+  db.addCandidate(multiCandidate);
+  db.addReview(multiReview);
+
+  // =========================================================================
+  // SCENARIO F: OCR / Blurry Document (Applied Physics PH101 on WA)
+  // =========================================================================
+  const blurId = `DC-TEST-BLURRY-${uniqueSuffix}`;
+  const blurCandidate: DetectedContentRecord = {
+    id: blurId,
+    name: `[SIMULATED BLURRY OCR SCENARIO] OCR / Blurry Physics Document (PH101)`,
+    filename: "blurry_physics_scan.jpg",
+    contentType: "Screenshot",
+    mimeType: "image/jpeg",
+    size: 154000,
+    sha256: "test_blurry_physics_sha256_hash",
+    subject: "Applied Physics",
+    subjectCode: "PH101",
+    platform: "WhatsApp",
+    source: "+1-305-555-0199",
+    risk: "REVIEW REQUIRED",
+    riskScore: 40,
+    confidence: 45, // OCR confidence is 45%
+    processing: "Completed",
+    review: "Pending",
+    detectedTime: now,
+    uploadedAt: now,
+    status: "ACTIVE",
+    storagePath: "/fictional/storage/blurry_physics_scan.jpg",
+    extractedText: "PH1... Ap... Ph...sics. Q1. State ... Schrodinger ... eq...ation. Q2. ... Heis...nberg uncertainty ...",
+    pagesCount: 1,
+    hasAssociatedAlert: false,
+    hasAssociatedReview: true,
+    reviewId: `REV-TEST-BLURRY-${uniqueSuffix}`,
+    questions: [
+      { id: "BQ1", questionNumber: "1", fullQuestionNumber: "Q1", section: "Group A", questionText: "State Schrodinger wave equation for a free particle and solve.", confidence: 45 },
+      { id: "BQ2", questionNumber: "2", fullQuestionNumber: "Q2", section: "Group A", questionText: "Explain Heisenberg uncertainty principle in quantum physics.", confidence: 41 }
+    ],
+    forensicResults: [],
+    metadataComparison: {
+      subjectMatch: true,
+      codeMatch: true,
+      marksMatch: false,
+      structureMatch: "UNCERTAIN",
+      orderMatch: "UNCERTAIN",
+      questionOverlapScore: 35,
+      summary: "Poor image quality led to mixed-confidence OCR (45%). Key concepts detected but structural fidelity is low."
+    },
+    extractionMethod: "OCR",
+    ocrConfidence: 45,
+    isTestData: true,
+    sourceType: "TEST_FIXTURE"
+  };
+
+  const blurReview: ReviewItemRecord = {
+    id: `REV-TEST-BLURRY-${uniqueSuffix}`,
+    candidateId: blurId,
+    subject: "Applied Physics",
+    subjectCode: "PH101",
+    riskScore: 40,
+    riskLevel: "REVIEW REQUIRED",
+    evidenceCount: 2,
+    detectedTime: now,
+    reviewerStatus: "Needs Verification",
+    priority: "Low Priority",
+    isTestData: true,
+    sourceType: "TEST_FIXTURE"
+  };
+
+  db.addCandidate(blurCandidate);
+  db.addReview(blurReview);
+
+  // =========================================================================
+  // SCENARIO G: Structural Match Without Exact Text Match (Mathematics MA201)
+  // =========================================================================
+  const structId = `DC-TEST-STRUCT-${uniqueSuffix}`;
+  const structCandidate: DetectedContentRecord = {
+    id: structId,
+    name: `[SIMULATED STRUCTURAL MATCH SCENARIO] Paraphrased Mathematics Structural Match`,
+    filename: "math_reconstructed_paraphrased.txt",
+    contentType: "Document",
+    mimeType: "text/plain",
+    size: 25000,
+    sha256: "test_struct_math_sha256_hash",
+    subject: "Engineering Mathematics",
+    subjectCode: "MA201",
+    platform: "Telegram",
+    source: "@math_tutors_inc",
+    risk: "REVIEW REQUIRED",
+    riskScore: 70,
+    confidence: 88,
+    processing: "Completed",
+    review: "Needs Verification",
+    detectedTime: now,
+    uploadedAt: now,
+    status: "ACTIVE",
+    storagePath: "/fictional/storage/math_reconstructed_paraphrased.txt",
+    extractedText: "MA201 Mathematics II. Section A contains 10 short questions of 2 marks each. Section B contains 5 long questions of 5 marks each. Section C contains 2 essay questions of 15 marks.",
+    pagesCount: 1,
+    hasAssociatedAlert: true,
+    hasAssociatedReview: true,
+    alertId: `AL-TEST-STRUCT-${uniqueSuffix}`,
+    reviewId: `REV-TEST-STRUCT-${uniqueSuffix}`,
+    questions: [
+      { id: "SQ1", questionNumber: "Section A", fullQuestionNumber: "Structure Match", section: "Header", questionText: "10 short questions of 2 marks each. 5 long questions of 5 marks each. 2 essay questions of 15 marks.", confidence: 90 }
+    ],
+    forensicResults: [],
+    metadataComparison: {
+      matchedExamId: "EX-MA-201",
+      matchedExamName: "Engineering Mathematics II (MA201)",
+      subjectMatch: true,
+      codeMatch: true,
+      marksMatch: true,
+      structureMatch: "MATCH",
+      orderMatch: "MATCH",
+      questionOverlapScore: 75,
+      summary: "Exam structure (10x2, 5x5, 2x15) matches MA201 reference perfectly. Text has been heavily paraphrased or replaced. Manual inspection recommended for structural plagiarism."
+    },
+    isTestData: true,
+    sourceType: "TEST_FIXTURE"
+  };
+
+  const structAlert: AlertRecord = {
+    id: `AL-TEST-STRUCT-${uniqueSuffix}`,
+    candidateId: structId,
+    candidateName: `[SIMULATED STRUCTURAL MATCH SCENARIO] Paraphrased Mathematics Structural Match`,
+    subject: "Engineering Mathematics",
+    subjectCode: "MA201",
+    severity: "HIGH",
+    title: "Structural Plagiarism/Overlap Detected",
+    description: "Mathematics document matching the exact schema structure of MA201 final exam (Section A: 10x2, Section B: 5x5, Section C: 2x15).",
+    similarityScore: 75,
+    status: "INVESTIGATING",
+    detectedTime: now,
+    timestamp: now,
+    platform: "Telegram",
+    evidenceSummary: "Structural match score is 100%, though textual overlap is low due to dynamic paraphrasing. Indicates highly structured leak reconstruction.",
+    isTestData: true,
+    sourceType: "TEST_FIXTURE"
+  };
+
+  const structReview: ReviewItemRecord = {
+    id: `REV-TEST-STRUCT-${uniqueSuffix}`,
+    candidateId: structId,
+    subject: "Engineering Mathematics",
+    subjectCode: "MA201",
+    riskScore: 70,
+    riskLevel: "REVIEW REQUIRED",
+    evidenceCount: 1,
+    detectedTime: now,
+    reviewerStatus: "Needs Verification",
+    priority: "Standard Priority",
+    isTestData: true,
+    sourceType: "TEST_FIXTURE"
+  };
+
+  db.addCandidate(structCandidate);
+  db.addAlert(structAlert);
+  db.addReview(structReview);
+
+  // Compile full lists of generated records
+  const historicalPapers = [historicalDBMS];
+  const verifiedPapers = [realDBMS];
+  const suspiciousCandidates = [suspCandidate, multiCandidate, structCandidate];
+  const normalCandidates = [fakeCandidate, ambCandidate, blurCandidate];
+  const alertsGenerated = [suspAlert, fakeAlert, ambAlert, structAlert];
+  const reviewsGenerated = [suspReview, fakeReview, ambReview, multiReview, blurReview, structReview];
 
   return {
     success: true,
-    message: 'Generated comprehensive test dataset with historical baselines, suspicious captures, and benign study documents.',
-    historicalPapers: [historical1, historical2],
-    verifiedPapers: [],
-    suspiciousCandidates: [susp1.candidate, susp2.candidate],
-    normalCandidates: [norm1.candidate, norm2.candidate],
-    alertsGenerated: alerts,
-    reviewsGenerated: reviews,
+    message: "Generated 7 high-fidelity, realistic test scenarios for examination security audits.",
+    historicalPapers,
+    verifiedPapers,
+    suspiciousCandidates,
+    normalCandidates,
+    alertsGenerated,
+    reviewsGenerated
   };
 }

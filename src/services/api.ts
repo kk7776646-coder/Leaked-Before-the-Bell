@@ -74,11 +74,44 @@ export type {
 
 const BASE_URL = '/api';
 
+// Intercept fetch locally within this module to automatically attach Authorization header if token exists in localStorage
+const customFetch = async function (input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('leaklens_token') : null;
+  const headers = init?.headers
+    ? (init.headers instanceof Headers
+      ? new Headers(init.headers)
+      : { ...(init.headers as Record<string, string>) })
+    : {};
+
+  if (token) {
+    if (headers instanceof Headers) {
+      if (!headers.has('Authorization')) {
+        headers.set('Authorization', `Bearer ${token}`);
+      }
+    } else {
+      const rawHeaders = headers as Record<string, string>;
+      if (!rawHeaders['Authorization']) {
+        rawHeaders['Authorization'] = `Bearer ${token}`;
+      }
+    }
+  }
+
+  return window.fetch(input, { ...init, headers });
+};
+
+// Shadow-bind global fetch to our custom implementation locally in this module
+const fetch = customFetch;
+
 export function getStoredAuthToken(): string | null {
   if (typeof window !== 'undefined') {
     return localStorage.getItem('leaklens_token');
   }
   return null;
+}
+
+export function isDemoModeActive(): boolean {
+  if (typeof window === 'undefined') return false;
+  return localStorage.getItem('leaklens_demo_mode') === 'true';
 }
 
 export function setStoredAuthToken(token: string | null) {
@@ -165,18 +198,24 @@ export const api = {
 
     try {
       const res = await fetch(`${BASE_URL}/detected-content?${query.toString()}`);
+      let list = [];
       if (res.ok) {
         const data = await res.json();
-        return Array.isArray(data) ? data : [];
+        list = Array.isArray(data) ? data : [];
+      } else {
+        // Retry once after 350ms in case of container/dev server restart
+        await new Promise((r) => setTimeout(r, 350));
+        const retryRes = await fetch(`${BASE_URL}/detected-content?${query.toString()}`);
+        if (retryRes.ok) {
+          const data = await retryRes.json();
+          list = Array.isArray(data) ? data : [];
+        }
       }
-      // Retry once after 350ms in case of container/dev server restart
-      await new Promise((r) => setTimeout(r, 350));
-      const retryRes = await fetch(`${BASE_URL}/detected-content?${query.toString()}`);
-      if (retryRes.ok) {
-        const data = await retryRes.json();
-        return Array.isArray(data) ? data : [];
+
+      if (!isDemoModeActive()) {
+        list = list.filter((c: any) => c && !c.isTestData && !c.id?.startsWith('DC-TEST') && !c.id?.startsWith('CAND-TEST') && c.sourceType !== 'TEST_FIXTURE');
       }
-      return [];
+      return list;
     } catch (err: any) {
       console.warn('[API] getDetectedContents warning:', err?.message || err);
       return [];
@@ -299,7 +338,11 @@ export const api = {
     if (search) query.append('search', search);
     const res = await fetch(`${BASE_URL}/historical?${query.toString()}`);
     if (!res.ok) throw new Error('Failed to fetch historical papers');
-    return res.json();
+    let list = await res.json();
+    if (!isDemoModeActive()) {
+      list = list.filter((p: any) => p && !p.isTestData && !p.id?.includes('TEST') && !p.id?.includes('TRIAL') && p.sourceType !== 'TEST_FIXTURE');
+    }
+    return list;
   },
 
   async getHistoricalPaperById(id: string): Promise<HistoricalPaperRecord> {
@@ -360,7 +403,11 @@ export const api = {
     if (params?.search) query.append('search', params.search);
     const res = await fetch(`${BASE_URL}/real-papers?${query.toString()}`);
     if (!res.ok) throw new Error('Failed to fetch real papers');
-    return res.json();
+    let list = await res.json();
+    if (!isDemoModeActive()) {
+      list = list.filter((p: any) => p && !p.isTestData && !p.id?.includes('TEST') && p.sourceType !== 'TEST_FIXTURE');
+    }
+    return list;
   },
 
   async getRealPaperById(id: string): Promise<RealPaperRecord> {
@@ -486,9 +533,30 @@ export const api = {
     if (params?.status) query.append('status', params.status);
     if (params?.severity) query.append('severity', params.severity);
     if (params?.search) query.append('search', params.search);
-    const res = await fetch(`${BASE_URL}/alerts?${query.toString()}`);
-    if (!res.ok) throw new Error('Failed to fetch alerts');
-    return res.json();
+
+    try {
+      const res = await fetch(`${BASE_URL}/alerts?${query.toString()}`);
+      let list = [];
+      if (res.ok) {
+        const data = await res.json();
+        list = Array.isArray(data) ? data : [];
+      } else {
+        await new Promise((r) => setTimeout(r, 350));
+        const retryRes = await fetch(`${BASE_URL}/alerts?${query.toString()}`);
+        if (retryRes.ok) {
+          const data = await retryRes.json();
+          list = Array.isArray(data) ? data : [];
+        }
+      }
+
+      if (!isDemoModeActive()) {
+        list = list.filter((a: any) => a && !a.isTestData && !a.id?.includes('TEST') && a.sourceType !== 'TEST_FIXTURE');
+      }
+      return list;
+    } catch (err: any) {
+      console.warn('[API] getAlerts warning:', err?.message || err);
+      return [];
+    }
   },
 
   async updateAlertStatus(id: string, status: AlertRecord['status']): Promise<AlertRecord> {
@@ -509,7 +577,11 @@ export const api = {
     if (params?.search) query.append('search', params.search);
     const res = await fetch(`${BASE_URL}/review-queue?${query.toString()}`);
     if (!res.ok) throw new Error('Failed to fetch review queue');
-    return res.json();
+    let list = await res.json();
+    if (!isDemoModeActive()) {
+      list = list.filter((r: any) => r && !r.isTestData && !r.id?.includes('TEST') && r.sourceType !== 'TEST_FIXTURE');
+    }
+    return list;
   },
 
   async submitReviewDecision(id: string, decision: string, notes?: string, reviewer?: string): Promise<ReviewItemRecord> {
@@ -540,16 +612,60 @@ export const api = {
   }> {
     try {
       const res = await fetch(`${BASE_URL}/dashboard/stats`);
+      let stats = null;
       if (res.ok) {
-        return await res.json();
+        stats = await res.json();
+      } else {
+        // If temporary warm-up or 5xx, retry once after a short delay
+        await new Promise((r) => setTimeout(r, 300));
+        const retryRes = await fetch(`${BASE_URL}/dashboard/stats`);
+        if (retryRes.ok) {
+          stats = await retryRes.json();
+        } else {
+          throw new Error(`HTTP ${res.status}`);
+        }
       }
-      // If temporary warm-up or 5xx, retry once after a short delay
-      await new Promise((r) => setTimeout(r, 300));
-      const retryRes = await fetch(`${BASE_URL}/dashboard/stats`);
-      if (retryRes.ok) {
-        return await retryRes.json();
+
+      if (stats && !isDemoModeActive()) {
+        // Exclude test data items from recent candidate feeds
+        const filterCandidate = (c: any) => c && !c.isTestData && !c.id?.startsWith('DC-TEST') && !c.id?.startsWith('CAND-TEST') && c.sourceType !== 'TEST_FIXTURE';
+        const filterAlert = (a: any) => a && !a.isTestData && !a.id?.includes('TEST') && a.sourceType !== 'TEST_FIXTURE';
+
+        const filteredCandidates = stats.recentCandidates?.filter(filterCandidate) || [];
+        const filteredAlerts = stats.recentAlerts?.filter(filterAlert) || [];
+
+        // Adjust statistics counters dynamically
+        try {
+          const statusRes = await fetch(`${BASE_URL}/test-data/status`);
+          if (statusRes.ok) {
+            const statusData = await statusRes.json();
+            return {
+              ...stats,
+              scannedToday: statusData.realCandidatesCount,
+              scannedTotal: statusData.realCandidatesCount,
+              activeAlerts: statusData.realAlertsCount,
+              highRiskAlerts: filteredAlerts.filter((a: any) => a.severity === 'CRITICAL' || a.severity === 'HIGH').length,
+              pendingReviews: statusData.realReviewsCount,
+              reviewQueueCount: statusData.realReviewsCount,
+              historicalPaperCount: statusData.realHistoricalCount,
+              realPaperCount: statusData.realRealPapersCount,
+              recentCandidates: filteredCandidates.slice(0, 5),
+              recentAlerts: filteredAlerts.slice(0, 4),
+            };
+          }
+        } catch (err) {
+          console.warn('[API] Failed to fetch test-data status for adjusting stats, fallback to manual filtered metrics:', err);
+        }
+
+        // Safe client-side fallback if status API fails
+        return {
+          ...stats,
+          recentCandidates: filteredCandidates.slice(0, 5),
+          recentAlerts: filteredAlerts.slice(0, 4),
+        };
       }
-      throw new Error(`HTTP ${res.status}`);
+
+      return stats;
     } catch (err: any) {
       console.warn('[API] Failed to fetch dashboard statistics, using safe local fallback:', err?.message || err);
       return {
@@ -1070,6 +1186,23 @@ export const api = {
     const data = await res.json();
     if (!res.ok) {
       throw new Error(data.message || 'Failed to process request.');
+    }
+    return data;
+  },
+
+  async uploadAvatar(file: File): Promise<{ success: boolean; avatarUrl: string; user: SafeUser }> {
+    const formData = new FormData();
+    formData.append('avatar', file);
+
+    const res = await fetch(`${BASE_URL}/auth/profile/avatar`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      credentials: 'include',
+      body: formData,
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.message || 'Failed to upload profile photo.');
     }
     return data;
   },

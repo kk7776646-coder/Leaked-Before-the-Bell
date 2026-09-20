@@ -242,7 +242,7 @@ export const DashboardPage: React.FC = () => {
                 { name: 'Social Community Watcher', platform: 'X', status: 'Online', latency: '85ms', description: 'Public post hash & snippet analyzer' },
                 { name: 'Authorized Intake Stream', platform: 'Upload', status: 'Active', latency: 'Direct', description: 'Secure ingest pipeline' },
               ].map((channel, i) => (
-                <div key={i} className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800">
+                <div key={i} className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-[0_10px_25px_rgba(148,163,184,0.12)] dark:hover:shadow-[0_10px_25px_rgba(2,6,23,0.3)] hover:-translate-y-0.5 transition-all duration-300 cursor-pointer">
                   <div className="flex items-center gap-3">
                     <SocialPlatformIcon platform={channel.platform} size={18} />
                     <div>
@@ -282,7 +282,7 @@ export const DashboardPage: React.FC = () => {
                 {recentAlerts.map((alert) => (
                   <div
                     key={alert.id}
-                    className="p-3 rounded-xl bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 font-sans"
+                    className="p-3 rounded-xl bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-[0_10px_25px_rgba(148,163,184,0.12)] dark:hover:shadow-[0_10px_25px_rgba(2,6,23,0.3)] hover:-translate-y-0.5 transition-all duration-300 cursor-pointer font-sans"
                   >
                     <div className="flex items-center justify-between mb-1">
                       <span

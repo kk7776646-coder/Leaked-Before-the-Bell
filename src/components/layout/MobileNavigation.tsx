@@ -89,10 +89,10 @@ export const MobileNavigation: React.FC<MobileNavigationProps> = ({ isOpen, onCl
                       end={item.to === '/'}
                       onClick={onClose}
                       className={({ isActive }) =>
-                        `flex items-center space-x-3 px-3 py-2.5 rounded-xl text-xs font-medium transition-colors ${
+                        `flex items-center space-x-3 px-3.5 py-2.5 rounded-xl text-xs transition-all duration-300 border ${
                           isActive
-                            ? 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white font-semibold'
-                            : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/60'
+                            ? 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white font-bold border-slate-200/90 dark:border-slate-700 shadow-[0_4px_12px_rgba(148,163,184,0.12)] dark:shadow-[0_4px_12px_rgba(2,6,23,0.4)]'
+                            : 'text-slate-600 dark:text-slate-400 border-transparent hover:bg-slate-50/90 dark:hover:bg-slate-800/40 hover:text-slate-900 dark:hover:text-slate-100 hover:border-slate-200/60 dark:hover:border-slate-800/60 hover:shadow-[0_4px_12px_rgba(148,163,184,0.08)] dark:hover:shadow-[0_4px_12px_rgba(2,6,23,0.2)]'
                         }`
                       }
                     >
