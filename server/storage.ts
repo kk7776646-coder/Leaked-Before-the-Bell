@@ -1,6 +1,12 @@
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import {
+  uploadToSupabaseStorage,
+  downloadFromSupabaseStorage,
+  deleteFromSupabaseStorage,
+  SUPABASE_BUCKET,
+} from './supabase';
 
 export const STORAGE_ROOT = path.resolve(process.cwd(), 'storage');
 
@@ -276,16 +282,19 @@ export function validateUploadedFileBuffer(
   };
 }
 
-// Persist uploaded file into storage/uploads/UP-XXXX/original.<ext>
+// Persist uploaded file into storage/uploads/UP-XXXX/original.<ext> and Supabase Storage
 export function saveUploadedFile(
   uploadId: string,
   originalFilename: string,
-  fileBuffer: Buffer
+  fileBuffer: Buffer,
+  mimeType?: string
 ): {
   storagePath: string;
   absolutePath: string;
   size: number;
   sha256: string;
+  supabaseBucket: string;
+  supabasePath: string;
 } {
   const uploadDir = path.join(DIRS.uploads, uploadId);
   if (!fs.existsSync(uploadDir)) {
@@ -300,12 +309,139 @@ export function saveUploadedFile(
 
   const sha256 = computeSha256(fileBuffer);
   const relativeStoragePath = path.join('uploads', uploadId, targetFilename);
+  const supabasePath = `uploads/${uploadId}/${targetFilename}`;
+
+  // Asynchronously or eagerly upload to Supabase Storage
+  uploadToSupabaseStorage(supabasePath, fileBuffer, mimeType || 'application/octet-stream').catch(
+    (err) => {
+      console.warn(`[Storage] Background upload to Supabase Storage failed for ${supabasePath}:`, err);
+    }
+  );
 
   return {
     storagePath: relativeStoragePath,
     absolutePath: targetAbsolutePath,
     size: fileBuffer.length,
     sha256,
+    supabaseBucket: SUPABASE_BUCKET,
+    supabasePath,
   };
 }
+
+/**
+ * Saves a document under a specific category (historical, real-papers, detected-content)
+ * and mirrors it to Supabase Storage.
+ */
+export async function saveDocumentToCategory(
+  category: 'historical' | 'real-papers' | 'detected-content' | 'rendered-pages',
+  filename: string,
+  buffer: Buffer,
+  mimeType?: string
+): Promise<{
+  storagePath: string;
+  absolutePath: string;
+  supabaseBucket: string;
+  supabasePath: string;
+  size: number;
+  sha256: string;
+}> {
+  let targetDir = DIRS.uploads;
+  if (category === 'historical') targetDir = DIRS.historicalRaw;
+  else if (category === 'real-papers') targetDir = DIRS.realPapersRaw;
+  else if (category === 'detected-content') targetDir = DIRS.candidatesRaw;
+  else if (category === 'rendered-pages') targetDir = DIRS.renderedPages;
+
+  if (!fs.existsSync(targetDir)) {
+    fs.mkdirSync(targetDir, { recursive: true });
+  }
+
+  const safeName = sanitizeFilename(filename);
+  const absolutePath = path.join(targetDir, safeName);
+  fs.writeFileSync(absolutePath, buffer);
+
+  const sha256 = computeSha256(buffer);
+  const supabasePath = `${category}/${safeName}`;
+
+  try {
+    await uploadToSupabaseStorage(supabasePath, buffer, mimeType || 'application/octet-stream');
+  } catch (err: any) {
+    console.warn(`[Storage] Upload to Supabase Storage (${supabasePath}) failed:`, err.message);
+  }
+
+  return {
+    storagePath: absolutePath,
+    absolutePath,
+    supabaseBucket: SUPABASE_BUCKET,
+    supabasePath,
+    size: buffer.length,
+    sha256,
+  };
+}
+
+/**
+ * Retrieves a document Buffer from local disk or Supabase Storage.
+ * Ensures that if local disk was wiped on Render redeploy, the file is fetched from Supabase Storage and cached locally.
+ */
+export async function getDocumentBuffer(
+  localPath?: string,
+  supabasePath?: string
+): Promise<{ buffer: Buffer; source: 'local' | 'supabase' } | null> {
+  // 1. Check local file
+  if (localPath && fs.existsSync(localPath)) {
+    try {
+      const buf = fs.readFileSync(localPath);
+      return { buffer: buf, source: 'local' };
+    } catch (err) {
+      console.warn('[Storage] Error reading local file:', localPath, err);
+    }
+  }
+
+  // 2. Fall back to Supabase Storage
+  if (supabasePath) {
+    const result = await downloadFromSupabaseStorage(supabasePath);
+    if (result.success && result.data) {
+      // Re-cache locally if localPath is safe
+      if (localPath) {
+        try {
+          const dir = path.dirname(localPath);
+          if (!fs.existsSync(dir)) {
+            fs.mkdirSync(dir, { recursive: true });
+          }
+          fs.writeFileSync(localPath, result.data);
+        } catch (cacheErr) {
+          // Ignore cache write error
+        }
+      }
+      return { buffer: result.data, source: 'supabase' };
+    }
+  }
+
+  // 3. Try deriving supabase path from localPath if not explicitly provided
+  if (localPath) {
+    const normalized = localPath.replace(/\\/g, '/');
+    let derivedPath = '';
+    if (normalized.includes('/storage/historical/')) {
+      derivedPath = `historical/${path.basename(localPath)}`;
+    } else if (normalized.includes('/storage/real_papers/')) {
+      derivedPath = `real-papers/${path.basename(localPath)}`;
+    } else if (normalized.includes('/storage/candidates/')) {
+      derivedPath = `detected-content/${path.basename(localPath)}`;
+    } else if (normalized.includes('/storage/uploads/')) {
+      const parts = normalized.split('/storage/uploads/');
+      if (parts[1]) derivedPath = `uploads/${parts[1]}`;
+    } else if (normalized.includes('/storage/rendered_pages/')) {
+      derivedPath = `rendered-pages/${path.basename(localPath)}`;
+    }
+
+    if (derivedPath) {
+      const res = await downloadFromSupabaseStorage(derivedPath);
+      if (res.success && res.data) {
+        return { buffer: res.data, source: 'supabase' };
+      }
+    }
+  }
+
+  return null;
+}
+
 

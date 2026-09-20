@@ -6,16 +6,20 @@ import { createServer as createViteServer } from 'vite';
 import { apiRouter } from './server/routes';
 import { authRouter, extractAuth } from './server/authRoutes';
 import { initStorage } from './server/storage';
+import { isSupabaseConfigured } from './server/supabase';
 
 async function startServer() {
   // Initialize storage directories
   initStorage();
 
   const app = express();
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT) || 3000;
 
   // Middlewares
-  app.use(cors({ origin: true, credentials: true }));
+  const configuredCorsOrigin = process.env.CORS_ORIGIN && process.env.CORS_ORIGIN !== '*'
+    ? process.env.CORS_ORIGIN
+    : true;
+  app.use(cors({ origin: configuredCorsOrigin, credentials: true }));
   app.use(cookieParser());
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
@@ -25,9 +29,25 @@ async function startServer() {
   app.use('/api/auth', authRouter);
   app.use('/api', apiRouter);
 
-  // Health check
+  // Health check endpoints (root /health for Render and /api/health)
+  const getHealthResponse = () => ({
+    status: 'ok',
+    service: 'LeakLens Production API',
+    timestamp: new Date().toISOString(),
+    supabase: {
+      configured: isSupabaseConfigured(),
+      url: process.env.SUPABASE_URL || 'https://wnemytwacfsekuwfqadr.supabase.co',
+      bucket: 'documents',
+    },
+    environment: process.env.NODE_ENV || 'development',
+  });
+
+  app.get('/health', (req, res) => {
+    res.json(getHealthResponse());
+  });
+
   app.get('/api/health', (req, res) => {
-    res.json({ status: 'ok', timestamp: new Date().toISOString() });
+    res.json(getHealthResponse());
   });
 
   // Vite middleware for development / Static files for production

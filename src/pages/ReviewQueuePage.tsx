@@ -258,7 +258,7 @@ export const ReviewQueuePage: React.FC = () => {
       </div>
 
       {/* Compact Search & Single Filter Toolbar */}
-      <Card className="mb-6 p-3">
+      <Card className="mb-6 p-3 overflow-visible" overflowVisible>
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400 pointer-events-none" />
@@ -310,7 +310,7 @@ export const ReviewQueuePage: React.FC = () => {
         ) : (
           <div className="overflow-x-auto font-sans">
             <table className="w-full text-left text-xs font-sans">
-              <thead className="bg-slate-50 dark:bg-slate-900/60 text-slate-500 font-sans border-b border-slate-200 dark:border-slate-800">
+              <thead className="bg-slate-100/80 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 font-sans border-b border-slate-200 dark:border-slate-700 text-[11px] uppercase tracking-wider">
                 <tr>
                   <th className="py-3 px-4 font-semibold">Content Item & ID</th>
                   <th className="py-3 px-4 font-semibold">Subject & Code</th>
@@ -331,7 +331,7 @@ export const ReviewQueuePage: React.FC = () => {
                       <div className="font-semibold text-slate-900 dark:text-slate-100 truncate max-w-[200px]">
                         {item.name}
                       </div>
-                      <div className="font-mono text-[11px] text-blue-600 dark:text-blue-400">
+                      <div className="font-mono text-[11px] text-blue-600 dark:text-blue-400 font-bold">
                         {item.id}
                       </div>
                     </td>
@@ -341,7 +341,7 @@ export const ReviewQueuePage: React.FC = () => {
                         <SubjectIcon subject={item.subject} size={14} className="shrink-0" />
                         <span>{item.subject}</span>
                       </div>
-                      <div className="text-[11px] text-slate-400 font-mono">{item.subjectCode}</div>
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">{item.subjectCode}</div>
                     </td>
 
                     <td className="py-3 px-4">

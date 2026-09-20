@@ -13,6 +13,8 @@ import {
   detectFileTypeFromBuffer,
   sanitizeFilename,
   isSafePath,
+  getDocumentBuffer,
+  saveDocumentToCategory,
 } from './storage';
 import {
   extractTextFromFile,
@@ -507,26 +509,36 @@ apiRouter.post('/detected-content/upload', uploadCandidates.array('files', 100),
 
 // Get list of detected content / candidates
 const handleGetDetectedList = (req: Request, res: Response) => {
-  const { status, risk, type, search } = req.query;
-  const list = db.getCandidates({
-    status: status as any,
-    risk: risk as string,
-    type: type as string,
-    search: search as string,
-  });
-  res.json(list);
+  try {
+    const { status, risk, type, search } = req.query;
+    const list = db.getCandidates({
+      status: status as any,
+      risk: risk as string,
+      type: type as string,
+      search: search as string,
+    });
+    res.json(Array.isArray(list) ? list : []);
+  } catch (err: any) {
+    console.error('[Routes] Error in handleGetDetectedList:', err);
+    res.json([]);
+  }
 };
 apiRouter.get('/candidates', handleGetDetectedList);
 apiRouter.get('/detected-content', handleGetDetectedList);
 
 // Get single detected content by ID
 const handleGetDetectedById = (req: Request, res: Response) => {
-  const candidate = db.getCandidateById(req.params.id);
-  if (!candidate) {
-    res.status(404).json({ error: 'Detected content item not found.' });
-    return;
+  try {
+    const candidate = db.getCandidateById(req.params.id);
+    if (!candidate) {
+      res.status(404).json({ error: 'Detected content item not found.' });
+      return;
+    }
+    res.json(candidate);
+  } catch (err: any) {
+    console.error('[Routes] Error in handleGetDetectedById:', err);
+    res.status(500).json({ error: 'Error retrieving detected content item', message: err?.message });
   }
-  res.json(candidate);
 };
 apiRouter.get('/candidates/:id', handleGetDetectedById);
 apiRouter.get('/detected-content/:id', handleGetDetectedById);
@@ -628,29 +640,31 @@ apiRouter.post('/candidates/:id/restore', handleRestoreDetected);
 apiRouter.post('/detected-content/:id/restore', handleRestoreDetected);
 
 // Secure Document Retrieval for Detected Content
-const handleGetDocument = (req: Request, res: Response): void => {
+const handleGetDocument = async (req: Request, res: Response): Promise<void> => {
   const candidate = db.getCandidateById(req.params.id);
   if (!candidate) {
     res.status(404).send('Document preview unavailable (record not found).');
     return;
   }
 
-  const filePath = candidate.storagePath;
-  if (!filePath || !fs.existsSync(filePath) || !isSafePath(filePath)) {
-    res.status(404).send('Document preview unavailable (file not found on disk).');
+  const docData = await getDocumentBuffer(candidate.storagePath, candidate.supabasePath);
+  if (!docData) {
+    res.status(404).send('Document preview unavailable (file not found on disk or Supabase Storage).');
     return;
   }
 
-  const ext = path.extname(filePath).toLowerCase();
-  let contentType = 'application/octet-stream';
+  const ext = path.extname(candidate.filename || candidate.name || candidate.storagePath || '').toLowerCase();
+  let contentType = candidate.mimeType || 'application/octet-stream';
   if (ext === '.pdf') contentType = 'application/pdf';
   else if (ext === '.png') contentType = 'image/png';
   else if (ext === '.jpg' || ext === '.jpeg') contentType = 'image/jpeg';
   else if (ext === '.webp') contentType = 'image/webp';
 
   res.setHeader('Content-Type', contentType);
-  res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(candidate.name)}"`);
-  fs.createReadStream(filePath).pipe(res);
+  res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(candidate.name || 'document')}"`);
+  res.setHeader('Content-Length', docData.buffer.length.toString());
+  res.setHeader('Cache-Control', 'public, max-age=86400');
+  res.send(docData.buffer);
 };
 apiRouter.get('/candidates/:id/document', handleGetDocument);
 apiRouter.get('/detected-content/:id/document', handleGetDocument);
@@ -1131,20 +1145,20 @@ apiRouter.post('/historical/generate-trial', handleGenerateTrialPaper);
 apiRouter.post('/historical-papers/generate-trial', handleGenerateTrialPaper);
 
 // Retrieve Historical Document Binary Stream
-const handleGetHistoricalDocument = (req: Request, res: Response): void => {
+const handleGetHistoricalDocument = async (req: Request, res: Response): Promise<void> => {
   const paper = db.getHistoricalPaperById(req.params.id);
   if (!paper) {
     res.status(404).send('Historical document unavailable (record not found).');
     return;
   }
 
-  const filePath = paper.storagePath;
-  if (!filePath || !fs.existsSync(filePath) || !isSafePath(filePath)) {
-    res.status(404).send('Historical document file unavailable on disk.');
+  const docData = await getDocumentBuffer(paper.storagePath, paper.supabasePath);
+  if (!docData) {
+    res.status(404).send('Historical document file unavailable on disk or Supabase Storage.');
     return;
   }
 
-  const ext = path.extname(filePath).toLowerCase();
+  const ext = path.extname(paper.originalFilename || paper.filename || paper.storagePath || '').toLowerCase();
   let contentType = 'application/octet-stream';
   if (ext === '.pdf') contentType = 'application/pdf';
   else if (ext === '.png') contentType = 'image/png';
@@ -1153,8 +1167,10 @@ const handleGetHistoricalDocument = (req: Request, res: Response): void => {
 
   res.setHeader('Content-Type', contentType);
   res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(paper.originalFilename || paper.filename)}"`);
+  res.setHeader('Content-Length', docData.buffer.length.toString());
+  res.setHeader('Cache-Control', 'public, max-age=86400');
   res.setHeader('Access-Control-Allow-Origin', '*');
-  fs.createReadStream(filePath).pipe(res);
+  res.send(docData.buffer);
 };
 apiRouter.get('/historical/:id/document', handleGetHistoricalDocument);
 apiRouter.get('/historical-papers/:id/document', handleGetHistoricalDocument);
@@ -1582,20 +1598,20 @@ apiRouter.delete('/real-papers/all', handleDeleteAllRealPapers);
 apiRouter.delete('/real-papers', handleDeleteAllRealPapers);
 
 // Retrieve Real Paper Document Binary Stream
-const handleGetRealPaperDocument = (req: Request, res: Response): void => {
+const handleGetRealPaperDocument = async (req: Request, res: Response): Promise<void> => {
   const paper = db.getRealPaperById(req.params.id);
   if (!paper) {
     res.status(404).send('Real paper document unavailable (record not found).');
     return;
   }
 
-  const filePath = paper.storagePath;
-  if (!filePath || !fs.existsSync(filePath) || !isSafePath(filePath)) {
-    res.status(404).send('Real paper document file unavailable on disk.');
+  const docData = await getDocumentBuffer(paper.storagePath, paper.supabasePath);
+  if (!docData) {
+    res.status(404).send('Real paper document file unavailable on disk or Supabase Storage.');
     return;
   }
 
-  const ext = path.extname(filePath).toLowerCase();
+  const ext = path.extname(paper.originalFilename || paper.filename || paper.storagePath || '').toLowerCase();
   let contentType = 'application/octet-stream';
   if (ext === '.pdf') contentType = 'application/pdf';
   else if (ext === '.png') contentType = 'image/png';
@@ -1604,8 +1620,10 @@ const handleGetRealPaperDocument = (req: Request, res: Response): void => {
 
   res.setHeader('Content-Type', contentType);
   res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(paper.originalFilename || paper.filename)}"`);
+  res.setHeader('Content-Length', docData.buffer.length.toString());
+  res.setHeader('Cache-Control', 'public, max-age=86400');
   res.setHeader('Access-Control-Allow-Origin', '*');
-  fs.createReadStream(filePath).pipe(res);
+  res.send(docData.buffer);
 };
 apiRouter.get('/real-papers/:id/document', handleGetRealPaperDocument);
 apiRouter.get('/real-papers/:id/file', handleGetRealPaperDocument);
@@ -1739,8 +1757,13 @@ apiRouter.post('/review-queue/:id/decision', (req: Request, res: Response) => {
 // ==========================================
 
 apiRouter.get('/dashboard/stats', (req: Request, res: Response) => {
-  const stats = db.getDashboardStats();
-  res.json(stats);
+  try {
+    const stats = db.getDashboardStats();
+    res.json(stats);
+  } catch (err: any) {
+    console.error('[Dashboard] Error generating dashboard stats:', err);
+    res.status(500).json({ error: 'Failed to retrieve dashboard stats', message: err?.message || String(err) });
+  }
 });
 
 // ==========================================
@@ -1788,12 +1811,24 @@ apiRouter.get('/audit-logs', (req: Request, res: Response) => {
 
 // Get provider presets with default official URLs and models
 apiRouter.get('/ai-assistant/presets', (req: Request, res: Response) => {
-  res.json(AiAssistantRegistry.getPresets());
+  try {
+    const presets = AiAssistantRegistry.getPresets();
+    res.json(Array.isArray(presets) ? presets : []);
+  } catch (err: any) {
+    console.error('[Routes] Error in /ai-assistant/presets:', err);
+    res.json([]);
+  }
 });
 
 // Get configured assistant providers (with masked API keys)
 apiRouter.get('/ai-assistant/providers', (req: Request, res: Response) => {
-  res.json(db.getAiProviders());
+  try {
+    const providers = db.getAiProviders();
+    res.json(Array.isArray(providers) ? providers : []);
+  } catch (err: any) {
+    console.error('[Routes] Error in /ai-assistant/providers:', err);
+    res.json([]);
+  }
 });
 
 // Save or update assistant provider configuration

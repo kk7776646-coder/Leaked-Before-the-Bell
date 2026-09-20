@@ -42,16 +42,23 @@ export const DashboardPage: React.FC = () => {
   const fetchDashboardData = async () => {
     setLoading(true);
     try {
-      const [statsData, detectedData, alertsData] = await Promise.all([
+      const [statsResult, detectedResult, alertsResult] = await Promise.allSettled([
         api.getDashboardStats(),
         api.getDetectedContents({ status: 'ACTIVE' }),
         api.getAlerts(),
       ]);
-      setStats(statsData);
-      setRecentItems(detectedData.slice(0, 5));
-      setRecentAlerts(alertsData.slice(0, 4));
+
+      if (statsResult.status === 'fulfilled' && statsResult.value) {
+        setStats(statsResult.value);
+      }
+      if (detectedResult.status === 'fulfilled' && Array.isArray(detectedResult.value)) {
+        setRecentItems(detectedResult.value.slice(0, 5));
+      }
+      if (alertsResult.status === 'fulfilled' && Array.isArray(alertsResult.value)) {
+        setRecentAlerts(alertsResult.value.slice(0, 4));
+      }
     } catch (err) {
-      console.error('Failed to load dashboard data:', err);
+      console.warn('Dashboard data fetch warning:', err);
     } finally {
       setLoading(false);
     }
@@ -279,10 +286,10 @@ export const DashboardPage: React.FC = () => {
                   >
                     <div className="flex items-center justify-between mb-1">
                       <span
-                        className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded ${
+                        className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${
                           alert.severity === 'HIGH' || alert.severity === 'CRITICAL'
-                            ? 'bg-rose-500/10 text-rose-600'
-                            : 'bg-amber-500/10 text-amber-600'
+                            ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300 border-rose-200/80 dark:border-rose-900/60'
+                            : 'bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300 border-amber-200/80 dark:border-amber-900/60'
                         }`}
                       >
                         {alert.severity}

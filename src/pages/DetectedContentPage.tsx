@@ -87,10 +87,11 @@ export const DetectedContentPage: React.FC = () => {
       const data = await api.getDetectedContents({
         status: 'ALL',
       });
-      setRawItems(data);
+      if (Array.isArray(data)) {
+        setRawItems(data);
+      }
     } catch (err: any) {
-      console.error('Failed to load detected content:', err);
-      showToast(err.message || 'Failed to fetch detected content', 'error');
+      console.warn('Could not refresh detected content, keeping current state:', err);
     } finally {
       setLoading(false);
     }
@@ -334,14 +335,14 @@ export const DetectedContentPage: React.FC = () => {
   const getReviewBadge = (review: string) => {
     switch (review) {
       case 'Needs Verification':
-        return 'bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-300 border border-rose-200 dark:border-rose-900/50';
+        return 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 border border-rose-200/80 dark:border-rose-900/50';
       case 'Pending':
-        return 'bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-300 border border-amber-200 dark:border-amber-900/50';
+        return 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 border border-amber-200/80 dark:border-amber-900/50';
       case 'Reviewed':
-        return 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900/50';
+        return 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-900/50';
       case 'Dismissed':
       default:
-        return 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 border border-slate-200 dark:border-slate-700';
+        return 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border border-slate-200 dark:border-slate-700';
     }
   };
 
@@ -386,7 +387,7 @@ export const DetectedContentPage: React.FC = () => {
       />
 
       {/* Compact Search & Single Filter Toolbar */}
-      <Card className="mb-6 font-sans p-3">
+      <Card className="mb-6 font-sans p-3 overflow-visible" overflowVisible>
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400 pointer-events-none" />
@@ -421,7 +422,7 @@ export const DetectedContentPage: React.FC = () => {
         ) : (
           <div className="overflow-x-auto font-sans">
             <table className="w-full text-left text-xs font-sans">
-              <thead className="bg-slate-50 dark:bg-slate-900/60 text-slate-500 font-sans border-b border-slate-200 dark:border-slate-800">
+              <thead className="bg-slate-100/80 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 font-sans border-b border-slate-200 dark:border-slate-700 text-[11px] uppercase tracking-wider">
                 <tr>
                   <th className="py-3 px-4 font-semibold">Detected Content & ID</th>
                   <th className="py-3 px-4 font-semibold">Origin & Platform</th>
@@ -485,7 +486,7 @@ export const DetectedContentPage: React.FC = () => {
                             >
                               {item.name}
                             </Link>
-                            <div className="flex items-center gap-1.5 text-[10px] text-slate-400 font-mono mt-0.5">
+                            <div className="flex items-center gap-1.5 text-[10px] text-slate-500 dark:text-slate-400 font-mono mt-0.5">
                               <span className="text-blue-600 font-bold">{item.id}</span>
                               <span>•</span>
                               <span>{Math.round(item.size / 1024)} KB</span>
@@ -510,7 +511,7 @@ export const DetectedContentPage: React.FC = () => {
                             {item.subject}
                           </span>
                         </div>
-                        <span className="text-[10px] font-mono text-slate-400 block mt-0.5">
+                        <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400 block mt-0.5">
                           {item.subjectCode}
                         </span>
                       </td>

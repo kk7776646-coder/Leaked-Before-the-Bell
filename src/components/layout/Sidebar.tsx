@@ -165,8 +165,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, onToggle }) => {
                     className={({ isActive }) =>
                       `flex items-center space-x-3 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-150 active:scale-[0.99] cursor-pointer select-none relative ${
                         isActive
-                          ? 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white font-semibold border border-slate-200/80 dark:border-slate-700/80 shadow-2xs'
-                          : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100/70 dark:hover:bg-slate-800/60 hover:text-slate-900 dark:hover:text-slate-100 border border-transparent'
+                          ? 'bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 font-semibold border border-blue-200/80 dark:border-blue-900/60 shadow-2xs'
+                          : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/70 hover:text-slate-900 dark:hover:text-slate-100 border border-transparent'
                       } ${isCollapsed ? 'justify-center px-0' : ''}`
                     }
                   >

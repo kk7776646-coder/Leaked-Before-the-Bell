@@ -133,6 +133,8 @@ export interface DetectedContentRecord {
   uploadedAt: string;
   status: 'ACTIVE' | 'ARCHIVED';
   storagePath: string;
+  supabaseBucket?: string;
+  supabasePath?: string;
   extractedText: string;
   extractedMetadata?: AutoExtractedMetadata;
   metadataSource?: 'AUTO_DETECTED' | 'USER_CORRECTED';
@@ -238,6 +240,8 @@ export interface HistoricalPaperRecord {
   filename: string;
   originalFilename: string;
   storagePath: string;
+  supabaseBucket?: string;
+  supabasePath?: string;
   fileSize: number;
   sha256: string;
   vectorEmbeddingsCount: number;
@@ -255,6 +259,8 @@ export interface RealPaperRecord {
   filename: string;
   originalFilename: string;
   storagePath: string;
+  supabaseBucket?: string;
+  supabasePath?: string;
   fileSize: number;
   sha256: string;
   subject: string;
@@ -519,6 +525,8 @@ export interface UploadRecord {
   size: number;
   sha256: string;
   storage_path: string;
+  supabase_bucket?: string;
+  supabase_path?: string;
   uploaded_at: string;
   status: UploadStatus;
   error?: string;

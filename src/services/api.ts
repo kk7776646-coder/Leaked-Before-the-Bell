@@ -163,9 +163,24 @@ export const api = {
     if (params?.type) query.append('type', params.type);
     if (params?.search) query.append('search', params.search);
 
-    const res = await fetch(`${BASE_URL}/detected-content?${query.toString()}`);
-    if (!res.ok) throw new Error('Failed to fetch detected content items');
-    return res.json();
+    try {
+      const res = await fetch(`${BASE_URL}/detected-content?${query.toString()}`);
+      if (res.ok) {
+        const data = await res.json();
+        return Array.isArray(data) ? data : [];
+      }
+      // Retry once after 350ms in case of container/dev server restart
+      await new Promise((r) => setTimeout(r, 350));
+      const retryRes = await fetch(`${BASE_URL}/detected-content?${query.toString()}`);
+      if (retryRes.ok) {
+        const data = await retryRes.json();
+        return Array.isArray(data) ? data : [];
+      }
+      return [];
+    } catch (err: any) {
+      console.warn('[API] getDetectedContents warning:', err?.message || err);
+      return [];
+    }
   },
 
   async getCandidates(params?: { status?: string; risk?: string; type?: string; search?: string }): Promise<DetectedContentRecord[]> {
@@ -173,9 +188,22 @@ export const api = {
   },
 
   async getDetectedContentById(id: string): Promise<DetectedContentRecord> {
-    const res = await fetch(`${BASE_URL}/detected-content/${encodeURIComponent(id)}`);
-    if (!res.ok) throw new Error('Detected content item not found');
-    return res.json();
+    try {
+      const res = await fetch(`${BASE_URL}/detected-content/${encodeURIComponent(id)}`);
+      if (res.ok) {
+        return await res.json();
+      }
+      // Retry once
+      await new Promise((r) => setTimeout(r, 350));
+      const retryRes = await fetch(`${BASE_URL}/detected-content/${encodeURIComponent(id)}`);
+      if (retryRes.ok) {
+        return await retryRes.json();
+      }
+      throw new Error(`Detected content item not found (HTTP ${res.status})`);
+    } catch (err: any) {
+      console.warn(`[API] getDetectedContentById failed for ${id}:`, err?.message || err);
+      throw err;
+    }
   },
 
   async getCandidateById(id: string): Promise<DetectedContentRecord> {
@@ -510,9 +538,35 @@ export const api = {
     monitoringSources: SocialSourceRecord[];
     systemStatus: string;
   }> {
-    const res = await fetch(`${BASE_URL}/dashboard/stats`);
-    if (!res.ok) throw new Error('Failed to fetch dashboard statistics');
-    return res.json();
+    try {
+      const res = await fetch(`${BASE_URL}/dashboard/stats`);
+      if (res.ok) {
+        return await res.json();
+      }
+      // If temporary warm-up or 5xx, retry once after a short delay
+      await new Promise((r) => setTimeout(r, 300));
+      const retryRes = await fetch(`${BASE_URL}/dashboard/stats`);
+      if (retryRes.ok) {
+        return await retryRes.json();
+      }
+      throw new Error(`HTTP ${res.status}`);
+    } catch (err: any) {
+      console.warn('[API] Failed to fetch dashboard statistics, using safe local fallback:', err?.message || err);
+      return {
+        scannedToday: 0,
+        scannedTotal: 0,
+        activeAlerts: 0,
+        highRiskAlerts: 0,
+        pendingReviews: 0,
+        reviewQueueCount: 0,
+        historicalPaperCount: 0,
+        realPaperCount: 0,
+        recentCandidates: [],
+        recentAlerts: [],
+        monitoringSources: [],
+        systemStatus: 'OPERATIONAL',
+      };
+    }
   },
 
   // --- SOCIAL SOURCES ---
@@ -558,15 +612,43 @@ export const api = {
 
   // --- AI ASSISTANT CONFIGURATION & CHAT ---
   async getAiPresets(): Promise<AiProviderPreset[]> {
-    const res = await fetch(`${BASE_URL}/ai-assistant/presets`);
-    if (!res.ok) throw new Error('Failed to fetch AI provider presets');
-    return res.json();
+    try {
+      const res = await fetch(`${BASE_URL}/ai-assistant/presets`);
+      if (res.ok) {
+        const data = await res.json();
+        return Array.isArray(data) ? data : [];
+      }
+      await new Promise((r) => setTimeout(r, 350));
+      const retryRes = await fetch(`${BASE_URL}/ai-assistant/presets`);
+      if (retryRes.ok) {
+        const data = await retryRes.json();
+        return Array.isArray(data) ? data : [];
+      }
+      return [];
+    } catch (err: any) {
+      console.warn('[API] getAiPresets warning:', err?.message || err);
+      return [];
+    }
   },
 
   async getAiProviders(): Promise<AiProviderConfig[]> {
-    const res = await fetch(`${BASE_URL}/ai-assistant/providers`);
-    if (!res.ok) throw new Error('Failed to fetch AI providers');
-    return res.json();
+    try {
+      const res = await fetch(`${BASE_URL}/ai-assistant/providers`);
+      if (res.ok) {
+        const data = await res.json();
+        return Array.isArray(data) ? data : [];
+      }
+      await new Promise((r) => setTimeout(r, 350));
+      const retryRes = await fetch(`${BASE_URL}/ai-assistant/providers`);
+      if (retryRes.ok) {
+        const data = await retryRes.json();
+        return Array.isArray(data) ? data : [];
+      }
+      return [];
+    } catch (err: any) {
+      console.warn('[API] getAiProviders warning:', err?.message || err);
+      return [];
+    }
   },
 
   async saveAiProvider(payload: {

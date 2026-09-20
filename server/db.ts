@@ -17,6 +17,11 @@ import {
   SessionRecord,
 } from './types';
 import { STORAGE_ROOT } from './storage';
+import {
+  backupDatabaseToSupabase,
+  restoreDatabaseFromSupabase,
+  isSupabaseConfigured,
+} from './supabase';
 
 export interface DatabaseSchema {
   candidates: CandidateRecord[];
@@ -119,8 +124,54 @@ class Database {
     sessions: [],
   };
 
+  private syncTimeout: NodeJS.Timeout | null = null;
+
   constructor() {
     this.load();
+    this.initSupabaseSync();
+  }
+
+  private async initSupabaseSync(): Promise<void> {
+    if (!isSupabaseConfigured()) return;
+    try {
+      const cloudData = await restoreDatabaseFromSupabase();
+      if (cloudData && typeof cloudData === 'object') {
+        let hasNewer = false;
+        // Merge cloud records if local is empty or older
+        if (Array.isArray(cloudData.candidates) && cloudData.candidates.length >= this.data.candidates.length) {
+          this.data.candidates = cloudData.candidates;
+          hasNewer = true;
+        }
+        if (Array.isArray(cloudData.historicalPapers) && cloudData.historicalPapers.length >= this.data.historicalPapers.length) {
+          this.data.historicalPapers = cloudData.historicalPapers;
+          hasNewer = true;
+        }
+        if (Array.isArray(cloudData.realPapers) && cloudData.realPapers.length >= this.data.realPapers.length) {
+          this.data.realPapers = cloudData.realPapers;
+          hasNewer = true;
+        }
+        if (Array.isArray(cloudData.examMetadata) && cloudData.examMetadata.length >= this.data.examMetadata.length) {
+          this.data.examMetadata = cloudData.examMetadata;
+          hasNewer = true;
+        }
+        if (Array.isArray(cloudData.users) && cloudData.users.length > 0) {
+          this.data.users = cloudData.users;
+          hasNewer = true;
+        }
+        if (cloudData.settings) {
+          this.data.settings = { ...this.data.settings, ...cloudData.settings };
+        }
+        if (hasNewer) {
+          this.saveLocalOnly();
+          console.log('[Database] Restored and synced state from Supabase Cloud Storage.');
+        }
+      } else {
+        // Initial cloud upload
+        this.queueSupabaseSync();
+      }
+    } catch (err: any) {
+      console.warn('[Database] Cloud sync init warning:', err.message);
+    }
   }
 
   private load(): void {
@@ -152,7 +203,7 @@ class Database {
     }
   }
 
-  public save(): void {
+  public saveLocalOnly(): void {
     try {
       if (!fs.existsSync(STORAGE_ROOT)) {
         fs.mkdirSync(STORAGE_ROOT, { recursive: true });
@@ -163,6 +214,24 @@ class Database {
     } catch (err) {
       console.error('Failed to save database file atomically:', err);
     }
+  }
+
+  public queueSupabaseSync(): void {
+    if (!isSupabaseConfigured()) return;
+    if (this.syncTimeout) {
+      clearTimeout(this.syncTimeout);
+    }
+    this.syncTimeout = setTimeout(() => {
+      backupDatabaseToSupabase(this.data).catch((err) => {
+        console.warn('[Database] Async Supabase cloud backup failed:', err);
+      });
+      this.syncTimeout = null;
+    }, 1000);
+  }
+
+  public save(): void {
+    this.saveLocalOnly();
+    this.queueSupabaseSync();
   }
 
   // --- AUDIT LOGS ---
@@ -201,36 +270,44 @@ class Database {
     type?: string;
     search?: string;
   }): CandidateRecord[] {
-    let list = [...this.data.candidates];
+    try {
+      let list = Array.isArray(this.data.candidates) ? [...this.data.candidates] : [];
 
-    if (filters?.status && filters.status !== 'ALL') {
-      list = list.filter((c) => c.status === filters.status);
-    } else if (!filters?.status) {
-      list = list.filter((c) => c.status === 'ACTIVE');
+      if (filters?.status && filters.status !== 'ALL') {
+        list = list.filter((c) => c && c.status === filters.status);
+      } else if (!filters?.status) {
+        list = list.filter((c) => c && c.status === 'ACTIVE');
+      }
+
+      if (filters?.risk && filters.risk !== 'ALL') {
+        list = list.filter((c) => c && c.risk === filters.risk);
+      }
+
+      if (filters?.type && filters.type !== 'ALL') {
+        list = list.filter((c) => c && c.contentType === filters.type);
+      }
+
+      if (filters?.search) {
+        const q = String(filters.search).toLowerCase().trim();
+        if (q) {
+          list = list.filter(
+            (c) =>
+              c &&
+              ((c.id && String(c.id).toLowerCase().includes(q)) ||
+                (c.name && String(c.name).toLowerCase().includes(q)) ||
+                (c.subject && String(c.subject).toLowerCase().includes(q)) ||
+                (c.subjectCode && String(c.subjectCode).toLowerCase().includes(q)) ||
+                (c.source && String(c.source).toLowerCase().includes(q)) ||
+                (c.platform && String(c.platform).toLowerCase().includes(q)))
+          );
+        }
+      }
+
+      return list;
+    } catch (err) {
+      console.error('[Database] Error in getCandidates:', err);
+      return [];
     }
-
-    if (filters?.risk && filters.risk !== 'ALL') {
-      list = list.filter((c) => c.risk === filters.risk);
-    }
-
-    if (filters?.type && filters.type !== 'ALL') {
-      list = list.filter((c) => c.contentType === filters.type);
-    }
-
-    if (filters?.search) {
-      const q = filters.search.toLowerCase().trim();
-      list = list.filter(
-        (c) =>
-          c.id.toLowerCase().includes(q) ||
-          c.name.toLowerCase().includes(q) ||
-          c.subject.toLowerCase().includes(q) ||
-          c.subjectCode.toLowerCase().includes(q) ||
-          c.source.toLowerCase().includes(q) ||
-          c.platform.toLowerCase().includes(q)
-      );
-    }
-
-    return list;
   }
 
   public getDetectedContents(filters?: {
@@ -615,15 +692,23 @@ class Database {
 
   // --- DASHBOARD STATS ---
   public getDashboardStats() {
-    const totalCandidates = this.data.candidates.length;
-    const activeAlerts = this.data.alerts.filter((a) => a.status === 'ACTIVE' || a.status === 'INVESTIGATING').length;
-    const highRiskAlerts = this.data.alerts.filter((a) => a.severity === 'CRITICAL' || a.severity === 'HIGH').length;
-    const pendingReviews = this.data.reviews.filter((r) => r.reviewerStatus === 'Needs Verification' || r.reviewerStatus === 'Assigned').length;
-    const historicalCount = this.data.historicalPapers.length;
-    const realPaperCount = this.data.realPapers.filter((p) => p.verificationStatus === 'VERIFIED').length;
+    const candidates = Array.isArray(this.data.candidates) ? this.data.candidates : [];
+    const alerts = Array.isArray(this.data.alerts) ? this.data.alerts : [];
+    const reviews = Array.isArray(this.data.reviews) ? this.data.reviews : [];
+    const historicalPapers = Array.isArray(this.data.historicalPapers) ? this.data.historicalPapers : [];
+    const realPapers = Array.isArray(this.data.realPapers) ? this.data.realPapers : [];
+    const socialSources = Array.isArray(this.data.socialSources) ? this.data.socialSources : DEFAULT_SOCIAL_SOURCES;
+    const settings = this.data.settings || DEFAULT_SETTINGS;
 
-    const recentCandidates = this.data.candidates.slice(0, 5);
-    const recentAlerts = this.data.alerts.slice(0, 4);
+    const totalCandidates = candidates.length;
+    const activeAlerts = alerts.filter((a) => a && (a.status === 'ACTIVE' || a.status === 'INVESTIGATING')).length;
+    const highRiskAlerts = alerts.filter((a) => a && (a.severity === 'CRITICAL' || a.severity === 'HIGH')).length;
+    const pendingReviews = reviews.filter((r) => r && (r.reviewerStatus === 'Needs Verification' || r.reviewerStatus === 'Assigned')).length;
+    const historicalCount = historicalPapers.length;
+    const realPaperCount = realPapers.filter((p) => p && p.verificationStatus === 'VERIFIED').length;
+
+    const recentCandidates = candidates.slice(0, 5);
+    const recentAlerts = alerts.slice(0, 4);
 
     return {
       scannedToday: totalCandidates,
@@ -636,8 +721,8 @@ class Database {
       realPaperCount: realPaperCount,
       recentCandidates,
       recentAlerts,
-      monitoringSources: this.data.socialSources,
-      systemStatus: this.data.settings.monitoringActive ? 'OPERATIONAL' : 'PAUSED',
+      monitoringSources: socialSources,
+      systemStatus: settings.monitoringActive ? 'OPERATIONAL' : 'PAUSED',
     };
   }
 
@@ -658,12 +743,20 @@ class Database {
    * Returns list of configured providers with masked API keys.
    */
   public getAiProviders(): AiProviderConfig[] {
-    return this.data.aiProviders.map((p) => ({
-      ...p,
-      hasApiKey: !!(p.apiKey && p.apiKey.trim().length > 0),
-      maskedApiKey: Database.maskApiKey(p.apiKey),
-      apiKey: undefined, // Strip raw key
-    }));
+    try {
+      const list = Array.isArray(this.data.aiProviders) ? this.data.aiProviders : [];
+      return list
+        .filter((p) => p && typeof p === 'object')
+        .map((p) => ({
+          ...p,
+          hasApiKey: !!(p.apiKey && typeof p.apiKey === 'string' && p.apiKey.trim().length > 0),
+          maskedApiKey: Database.maskApiKey(p.apiKey),
+          apiKey: undefined, // Strip raw key
+        }));
+    } catch (err) {
+      console.error('[Database] Error in getAiProviders:', err);
+      return [];
+    }
   }
 
   /**

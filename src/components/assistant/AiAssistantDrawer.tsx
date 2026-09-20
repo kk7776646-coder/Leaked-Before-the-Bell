@@ -87,10 +87,12 @@ export const AiAssistantDrawer: React.FC = () => {
   const loadActiveProvider = async () => {
     try {
       const providers = await api.getAiProviders();
-      const defaultProv = providers.find((p) => p.isDefault && p.enabled) || null;
+      const defaultProv = Array.isArray(providers)
+        ? providers.find((p) => p && p.isDefault && p.enabled) || null
+        : null;
       setActiveProvider(defaultProv);
     } catch (err) {
-      console.error('Failed to load active AI provider:', err);
+      console.warn('Could not load active AI provider, operating in local mode:', err);
     } finally {
       setHasLoadedProvider(true);
     }

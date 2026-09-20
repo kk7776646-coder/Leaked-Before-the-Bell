@@ -8,6 +8,7 @@ interface CardProps {
   subtitle?: string;
   footer?: React.ReactNode;
   hoverEffect?: boolean;
+  overflowVisible?: boolean;
 }
 
 export const Card: React.FC<CardProps> = ({
@@ -18,15 +19,19 @@ export const Card: React.FC<CardProps> = ({
   subtitle,
   footer,
   hoverEffect = false,
+  overflowVisible = false,
 }) => {
+  const isOverflowVisible = overflowVisible || className.includes('overflow-visible');
+  const overflowClass = isOverflowVisible ? 'overflow-visible' : 'overflow-hidden';
+
   return (
     <div
-      className={`bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xs overflow-hidden transition-all duration-200 ${
-        hoverEffect ? 'hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-sm' : ''
+      className={`bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-[0_1px_3px_0_rgba(15,23,42,0.04)] ${overflowClass} transition-all duration-200 ${
+        hoverEffect ? 'hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-[0_4px_12px_-2px_rgba(15,23,42,0.06)]' : ''
       } ${className}`}
     >
       {(title || action || subtitle) && (
-        <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between gap-4">
+        <div className="px-5 py-3.5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between gap-4">
           <div>
             {title && (
               <h3 className="font-heading text-sm sm:text-base font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">

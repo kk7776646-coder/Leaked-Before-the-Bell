@@ -245,7 +245,7 @@ export const AlertsPage: React.FC = () => {
       </div>
 
       {/* Filter and Search Bar */}
-      <Card className="mb-6 p-3">
+      <Card className="mb-6 p-3 overflow-visible" overflowVisible>
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400 pointer-events-none" />
@@ -297,7 +297,7 @@ export const AlertsPage: React.FC = () => {
         <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs">
           <table className="w-full text-left text-xs min-w-[768px] font-sans">
             <thead>
-              <tr className="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-800 text-slate-500 font-medium">
+              <tr className="bg-slate-100/80 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-[11px] uppercase tracking-wider font-semibold">
                 <th className="px-4 py-3">Alert</th>
                 <th className="px-4 py-3">Content ID</th>
                 <th className="px-4 py-3">Subject</th>
@@ -314,7 +314,7 @@ export const AlertsPage: React.FC = () => {
                   <td className="px-4 py-3.5 font-mono font-medium text-slate-900 dark:text-slate-100">
                     {a.id}
                   </td>
-                  <td className="px-4 py-3.5 font-mono text-blue-600 dark:text-blue-400 font-medium">
+                  <td className="px-4 py-3.5 font-mono text-blue-600 dark:text-blue-400 font-bold">
                     {a.candidateId}
                   </td>
                   <td className="px-4 py-3.5">
@@ -325,12 +325,12 @@ export const AlertsPage: React.FC = () => {
                   </td>
                   <td className="px-4 py-3.5">
                     <span
-                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold ${
+                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${
                         a.severity === 'HIGH' || a.severity === 'CRITICAL'
-                          ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300'
+                          ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300 border-rose-200/80 dark:border-rose-900/60'
                           : a.severity === 'MEDIUM'
-                          ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300'
-                          : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300'
+                          ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300 border-amber-200/80 dark:border-amber-900/60'
+                          : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300 border-emerald-200/80 dark:border-emerald-900/60'
                       }`}
                     >
                       {a.severity === 'HIGH' || a.severity === 'CRITICAL' ? (

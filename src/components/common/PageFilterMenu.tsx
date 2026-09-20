@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { SlidersHorizontal, X, Check, RotateCcw } from 'lucide-react';
 
 export type FilterFieldType = 'chips' | 'select' | 'date-range';
@@ -37,8 +38,41 @@ export const PageFilterMenu: React.FC<PageFilterMenuProps> = ({
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [draftValues, setDraftValues] = useState<PageFilterValues>(values);
+  const [coords, setCoords] = useState<{ top: number; right: number }>({ top: 0, right: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
+
+  // Position calculation for desktop popover to anchor directly below trigger button
+  const updatePosition = () => {
+    if (!buttonRef.current) return;
+    const rect = buttonRef.current.getBoundingClientRect();
+    const dropdownWidth = 380;
+    const margin = 12;
+
+    const top = rect.bottom + 6;
+    let right = window.innerWidth - rect.right;
+    if (right < margin) right = margin;
+
+    // Guard against extending past left edge of the viewport
+    if (window.innerWidth - right < dropdownWidth + margin) {
+      right = Math.max(margin, window.innerWidth - dropdownWidth - margin);
+    }
+
+    setCoords({ top, right });
+  };
+
+  useEffect(() => {
+    if (isOpen) {
+      updatePosition();
+      window.addEventListener('resize', updatePosition);
+      window.addEventListener('scroll', updatePosition, true);
+    }
+    return () => {
+      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updatePosition, true);
+    };
+  }, [isOpen]);
 
   // Sync draft values when values prop or modal open changes
   useEffect(() => {
@@ -60,9 +94,12 @@ export const PageFilterMenu: React.FC<PageFilterMenuProps> = ({
   // Close on outside click
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node;
       if (
         containerRef.current &&
-        !containerRef.current.contains(event.target as Node)
+        !containerRef.current.contains(target) &&
+        popoverRef.current &&
+        !popoverRef.current.contains(target)
       ) {
         setIsOpen(false);
       }
@@ -159,19 +196,29 @@ export const PageFilterMenu: React.FC<PageFilterMenuProps> = ({
         )}
       </button>
 
-      {/* Popover on Desktop / Modal Drawer on Mobile */}
-      {isOpen && (
+      {/* Popover on Desktop / Modal Drawer on Mobile - Portaled to document.body to prevent any container overflow clipping */}
+      {isOpen && typeof document !== 'undefined' && createPortal(
         <>
-          {/* Mobile Backdrop */}
+          {/* Backdrop: translucent on mobile, subtle click-catcher on desktop */}
           <div
-            className="fixed inset-0 bg-black/40 backdrop-blur-2xs z-40 sm:hidden"
+            className="fixed inset-0 bg-black/40 sm:bg-transparent backdrop-blur-2xs sm:backdrop-blur-none z-[9998]"
             onClick={() => setIsOpen(false)}
           />
 
           <div
+            ref={popoverRef}
             role="dialog"
             aria-label="Filter options"
-            className="fixed sm:absolute bottom-0 left-0 right-0 sm:bottom-auto sm:left-auto sm:right-0 sm:top-full sm:mt-2 w-full sm:w-[380px] max-h-[85vh] sm:max-h-[520px] bg-white dark:bg-slate-900 rounded-t-2xl sm:rounded-xl border border-slate-200 dark:border-slate-800 shadow-xl z-50 flex flex-col animate-in fade-in zoom-in-95 duration-150 overflow-hidden font-sans"
+            style={
+              typeof window !== 'undefined' && window.innerWidth >= 640
+                ? {
+                    position: 'fixed',
+                    top: `${coords.top}px`,
+                    right: `${coords.right}px`,
+                  }
+                : undefined
+            }
+            className="fixed inset-x-0 bottom-0 sm:bottom-auto sm:inset-x-auto w-full sm:w-[380px] max-h-[85vh] sm:max-h-[520px] bg-white dark:bg-slate-900 rounded-t-2xl sm:rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xl z-[9999] flex flex-col animate-in fade-in zoom-in-95 duration-150 overflow-hidden font-sans"
           >
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 dark:border-slate-800">
@@ -314,7 +361,7 @@ export const PageFilterMenu: React.FC<PageFilterMenuProps> = ({
             </div>
           </div>
         </>
-      )}
+      , document.body)}
     </div>
   );
 };
