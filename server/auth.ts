@@ -156,45 +156,69 @@ export function getAuthenticatedUserFromToken(token: string): { user: SafeUser; 
  */
 export function seedDefaultUsersIfEmpty(): void {
   const users = db.getUsers();
-  const adminExists = users.some((u) => u.role === 'ADMIN');
+  const rawBootstrapEmail = process.env.BOOTSTRAP_ADMIN_EMAIL;
   
-  if (!adminExists) {
-    const adminEmail = (process.env.BOOTSTRAP_ADMIN_EMAIL || 'admin@leaklens.local').trim().toLowerCase();
-    let adminPassword = process.env.BOOTSTRAP_ADMIN_PASSWORD;
-    let isRandom = false;
+  if (rawBootstrapEmail && rawBootstrapEmail.trim().length > 0) {
+    const bootstrapEmail = rawBootstrapEmail.trim().toLowerCase();
+    const bootstrapExists = users.some((u) => u.email.trim().toLowerCase() === bootstrapEmail);
+    
+    if (!bootstrapExists) {
+      let adminPassword = process.env.BOOTSTRAP_ADMIN_PASSWORD;
+      let isRandom = false;
 
-    if (!adminPassword || adminPassword.trim().length === 0) {
-      // Generate secure alphanumeric + special secure random password
-      adminPassword = crypto.randomBytes(10).toString('base64').replace(/[^a-zA-Z0-9]/g, '') + 'A1!';
-      isRandom = true;
-    }
+      if (!adminPassword || adminPassword.trim().length === 0) {
+        adminPassword = crypto.randomBytes(10).toString('base64').replace(/[^a-zA-Z0-9]/g, '') + 'A1!';
+        isRandom = true;
+      }
 
-    const defaultAdmin: UserRecord = {
-      id: `USR-ADM-${Date.now().toString(36).toUpperCase()}`,
-      email: adminEmail,
-      fullName: 'Chief Examination Controller',
-      passwordHash: hashPassword(adminPassword),
-      role: 'ADMIN',
-      organization: 'Central Examination Oversight Board',
-      status: 'ACTIVE',
-      createdAt: new Date().toISOString(),
-    };
+      const bootstrapAdmin: UserRecord = {
+        id: `USR-ADM-${Date.now().toString(36).toUpperCase()}`,
+        email: bootstrapEmail,
+        fullName: 'Chief Examination Controller',
+        passwordHash: hashPassword(adminPassword),
+        role: 'ADMIN',
+        organization: 'Central Examination Oversight Board',
+        status: 'ACTIVE',
+        createdAt: new Date().toISOString(),
+      };
 
-    db.createUser(defaultAdmin);
+      db.createUser(bootstrapAdmin);
+      console.log(`[BOOTSTRAP] Configured BOOTSTRAP_ADMIN_EMAIL: ${bootstrapEmail} created successfully.`);
 
-    if (isRandom) {
-      console.log(`\n======================================================================`);
-      console.log(`[BOOTSTRAP] SECURE ADMIN ACCOUNT GENERATED`);
-      console.log(`Email: ${adminEmail}`);
-      console.log(`Temporary Password: ${adminPassword}`);
-      console.log(`======================================================================\n`);
+      if (isRandom) {
+        console.log(`\n======================================================================`);
+        console.log(`[BOOTSTRAP] SECURE ADMIN ACCOUNT GENERATED`);
+        console.log(`Email: ${bootstrapEmail}`);
+        console.log(`Temporary Password: ${adminPassword}`);
+        console.log(`======================================================================\n`);
+      }
     } else {
-      console.log(`[BOOTSTRAP] Admin account provisioned with password from environment variables.`);
+      console.log(`[BOOTSTRAP] Configured BOOTSTRAP_ADMIN_EMAIL: ${bootstrapEmail} already exists. Preserving credentials.`);
+    }
+  } else {
+    // If no custom BOOTSTRAP_ADMIN_EMAIL is configured, fall back to checking if any ADMIN exists
+    const adminExists = users.some((u) => u.role === 'ADMIN');
+    if (!adminExists) {
+      const adminEmail = 'admin@leaklens.local';
+      const defaultAdmin: UserRecord = {
+        id: `USR-ADM-${Date.now().toString(36).toUpperCase()}`,
+        email: adminEmail,
+        fullName: 'Chief Examination Controller',
+        passwordHash: hashPassword('Admin123!'),
+        role: 'ADMIN',
+        organization: 'Central Examination Oversight Board',
+        status: 'ACTIVE',
+        createdAt: new Date().toISOString(),
+      };
+
+      db.createUser(defaultAdmin);
+      console.log('[Auth] Seeded default system admin: admin@leaklens.local');
     }
   }
 
-  // Also seed default security officer ONLY if DB is completely empty and no officer exists
-  if (users.length === 0) {
+  // Seed default security officer ONLY if no officer exists
+  const officerExists = users.some((u) => u.role === 'SECURITY_OFFICER');
+  if (!officerExists) {
     const defaultOfficer: UserRecord = {
       id: 'USR-SEC-001',
       email: 'security.officer@leaklens.local',

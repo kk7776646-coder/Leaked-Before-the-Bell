@@ -5,6 +5,7 @@ import {
   validatePasswordPolicy,
   createSession,
   getAuthenticatedUserFromToken,
+  seedDefaultUsersIfEmpty,
 } from './auth';
 import { UserRecord, UserRole, UserStatus } from './types';
 
@@ -175,6 +176,117 @@ export async function runAllAuthTests(): Promise<AuthTestSuiteReport> {
       }
     });
 
+    // SCENARIO 6: Bootstrap Admin - Brand New Provisioning with Password Policy and Hashing
+    await runScenario('AUTH-BST-001', 'Admin Account Bootstrapping on First Startup', 'STATUS_ENFORCEMENT', () => {
+      // Temporarily mock environment variables
+      const originalEnvEmail = process.env.BOOTSTRAP_ADMIN_EMAIL;
+      const originalEnvPassword = process.env.BOOTSTRAP_ADMIN_PASSWORD;
+
+      process.env.BOOTSTRAP_ADMIN_EMAIL = 'TestBootstrapAdmin@leaklens.test';
+      process.env.BOOTSTRAP_ADMIN_PASSWORD = 'BootstrapPass123!';
+
+      try {
+        // Clear database user roster
+        db['data'].users = [];
+        seedDefaultUsersIfEmpty();
+
+        const users = db.getUsers();
+        const createdAdmin = users.find((u) => u.email === 'testbootstrapadmin@leaklens.test');
+        
+        if (!createdAdmin) {
+          throw new Error('Bootstrap did not create the configured admin account');
+        }
+        if (createdAdmin.role !== 'ADMIN') {
+          throw new Error(`Bootstrapped user has role ${createdAdmin.role}, expected ADMIN`);
+        }
+        if (createdAdmin.status !== 'ACTIVE') {
+          throw new Error(`Bootstrapped user has status ${createdAdmin.status}, expected ACTIVE`);
+        }
+        if (!createdAdmin.passwordHash) {
+          throw new Error('Bootstrapped admin account has no password hash');
+        }
+
+        // Verify login works with the bootstrapped credentials
+        const loginSuccess = verifyPassword('BootstrapPass123!', createdAdmin.passwordHash);
+        if (!loginSuccess) {
+          throw new Error('Failed to verify correct password on bootstrapped admin account');
+        }
+      } finally {
+        process.env.BOOTSTRAP_ADMIN_EMAIL = originalEnvEmail;
+        process.env.BOOTSTRAP_ADMIN_PASSWORD = originalEnvPassword;
+      }
+    });
+
+    // SCENARIO 7: Bootstrap Already Exists - Password Preserved, No Duplicate Account
+    await runScenario('AUTH-BST-002', 'Preserving Existing Bootstrap Account on Restart', 'STATUS_ENFORCEMENT', () => {
+      const originalEnvEmail = process.env.BOOTSTRAP_ADMIN_EMAIL;
+      const originalEnvPassword = process.env.BOOTSTRAP_ADMIN_PASSWORD;
+
+      process.env.BOOTSTRAP_ADMIN_EMAIL = 'TestBootstrapAdmin@leaklens.test';
+      process.env.BOOTSTRAP_ADMIN_PASSWORD = 'BootstrapPass123!';
+
+      try {
+        db['data'].users = [];
+        seedDefaultUsersIfEmpty();
+
+        const count1 = db.getUsers().length;
+        const admin1 = db.getUsers().find((u) => u.email === 'testbootstrapadmin@leaklens.test');
+        if (!admin1) throw new Error('First seed failed to create admin');
+        const hash1 = admin1.passwordHash;
+
+        // Run bootstrap again simulating server restart
+        seedDefaultUsersIfEmpty();
+
+        const count2 = db.getUsers().length;
+        const admin2 = db.getUsers().find((u) => u.email === 'testbootstrapadmin@leaklens.test');
+        if (!admin2) throw new Error('Second seed failed to find admin');
+
+        if (count1 !== count2) {
+          throw new Error('Second bootstrap created duplicate admin accounts on restart');
+        }
+        if (admin1.id !== admin2.id) {
+          throw new Error('Second bootstrap changed the user ID of the existing admin');
+        }
+        if (hash1 !== admin2.passwordHash) {
+          throw new Error('Second bootstrap incorrectly changed/overwrote the existing password hash');
+        }
+      } finally {
+        process.env.BOOTSTRAP_ADMIN_EMAIL = originalEnvEmail;
+        process.env.BOOTSTRAP_ADMIN_PASSWORD = originalEnvPassword;
+      }
+    });
+
+    // SCENARIO 8: Bootstrap Case Normalization Casing Differences
+    await runScenario('AUTH-BST-003', 'Handling Email Casing Normalization on Bootstrap', 'STATUS_ENFORCEMENT', () => {
+      const originalEnvEmail = process.env.BOOTSTRAP_ADMIN_EMAIL;
+      const originalEnvPassword = process.env.BOOTSTRAP_ADMIN_PASSWORD;
+
+      try {
+        db['data'].users = [];
+        
+        // Seed first with Mixed Casing
+        process.env.BOOTSTRAP_ADMIN_EMAIL = 'TESTAdmin@LeakLens.test';
+        process.env.BOOTSTRAP_ADMIN_PASSWORD = 'BootstrapPass123!';
+        seedDefaultUsersIfEmpty();
+
+        const count1 = db.getUsers().length;
+        const admin1 = db.getUsers().find((u) => u.email === 'testadmin@leaklens.test');
+        if (!admin1) throw new Error('Mixed case email did not resolve to normalized lowercase on creation');
+
+        // Seed second with different casing representing restart / lookup mismatch
+        process.env.BOOTSTRAP_ADMIN_EMAIL = 'testadmin@leaklens.test';
+        seedDefaultUsersIfEmpty();
+
+        const count2 = db.getUsers().length;
+        if (count1 !== count2) {
+          throw new Error('Casing differences caused duplicate bootstrap admin accounts to be created');
+        }
+      } finally {
+        process.env.BOOTSTRAP_ADMIN_EMAIL = originalEnvEmail;
+        process.env.BOOTSTRAP_ADMIN_PASSWORD = originalEnvPassword;
+      }
+    });
+
   } finally {
     // Tear down test data, restore original database state
     db['data'].users = originalUsers;
@@ -193,4 +305,39 @@ export async function runAllAuthTests(): Promise<AuthTestSuiteReport> {
     timestamp: new Date().toISOString(),
     results,
   };
+}
+
+// CLI test runner entry point
+if (process.argv[1]?.endsWith('authTestSuite.ts') || process.argv[1]?.endsWith('authTestSuite')) {
+  console.log('\n======================================================');
+  console.log('RUNNING SYSTEM AUTHENTICATION & BOOTSTRAP TEST SUITE');
+  console.log('======================================================\n');
+  
+  runAllAuthTests()
+    .then((report) => {
+      console.log('------------------------------------------------------');
+      console.log(`Summary: ${report.summary}`);
+      console.log('------------------------------------------------------\n');
+      
+      report.results.forEach((r) => {
+        const mark = r.status === 'PASSED' ? '✓' : '✗';
+        console.log(`${mark} [${r.id}] ${r.name} (${r.durationMs}ms)`);
+        if (r.status === 'FAILED') {
+          console.error(`  ↳ Error: ${r.details}`);
+        }
+      });
+      
+      console.log('\n======================================================');
+      if (report.failedCount > 0) {
+        console.error(`TEST SUITE FAILED: ${report.failedCount} scenario(s) failed.`);
+        process.exit(1);
+      } else {
+        console.log('ALL SCENARIOS PASSED SUCCESSFULLY!');
+        process.exit(0);
+      }
+    })
+    .catch((err) => {
+      console.error('Fatal Test Runner Exception:', err);
+      process.exit(1);
+    });
 }

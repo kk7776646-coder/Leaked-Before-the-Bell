@@ -125,14 +125,29 @@ class Database {
   };
 
   private syncTimeout: NodeJS.Timeout | null = null;
+  public isSynced = false;
+  private syncCallbacks: (() => void)[] = [];
 
   constructor() {
     this.load();
     this.initSupabaseSync();
   }
 
+  public onSynced(callback: () => void): void {
+    if (this.isSynced) {
+      callback();
+    } else {
+      this.syncCallbacks.push(callback);
+    }
+  }
+
   private async initSupabaseSync(): Promise<void> {
-    if (!isSupabaseConfigured()) return;
+    if (!isSupabaseConfigured()) {
+      this.isSynced = true;
+      this.syncCallbacks.forEach((cb) => cb());
+      this.syncCallbacks = [];
+      return;
+    }
     try {
       const cloudData = await restoreDatabaseFromSupabase();
       if (cloudData && typeof cloudData === 'object') {
@@ -171,6 +186,10 @@ class Database {
       }
     } catch (err: any) {
       console.warn('[Database] Cloud sync init warning:', err.message);
+    } finally {
+      this.isSynced = true;
+      this.syncCallbacks.forEach((cb) => cb());
+      this.syncCallbacks = [];
     }
   }
 

@@ -1088,7 +1088,8 @@ export const api = {
       const err = await res.json().catch(() => ({ message: 'Failed to fetch users' }));
       throw new Error(err.message || 'Failed to fetch users');
     }
-    return res.json();
+    const data = await res.json();
+    return data.users || [];
   },
 
   async createUser(payload: {

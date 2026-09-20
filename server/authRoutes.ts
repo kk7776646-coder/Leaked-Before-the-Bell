@@ -25,8 +25,10 @@ declare global {
 
 export const authRouter = express.Router();
 
-// Seed initial system accounts on startup
-seedDefaultUsersIfEmpty();
+// Seed initial system accounts on startup once database is hydrated
+db.onSynced(() => {
+  seedDefaultUsersIfEmpty();
+});
 
 /**
  * Authentication extraction middleware
