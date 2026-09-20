@@ -386,7 +386,7 @@ export interface SystemSettings {
 export interface AuditLogEntry {
   id: string;
   action: string;
-  entityType: 'DETECTED_CONTENT' | 'CANDIDATE' | 'HISTORICAL_PAPER' | 'REAL_PAPER' | 'EXAM_METADATA' | 'ALERT' | 'REVIEW' | 'AI_ASSISTANT';
+  entityType: 'DETECTED_CONTENT' | 'CANDIDATE' | 'HISTORICAL_PAPER' | 'REAL_PAPER' | 'EXAM_METADATA' | 'ALERT' | 'REVIEW' | 'AI_ASSISTANT' | 'USER_ACCOUNT' | 'USER_SESSION';
   entityId: string;
   timestamp: string;
   user: string;
@@ -612,8 +612,8 @@ export interface TestDatasetSummary {
 // AUTHENTICATION & USER MANAGEMENT TYPES
 // ==========================================
 
-export type UserRole = 'OPERATOR' | 'SECURITY_OFFICER' | 'ADMIN';
-export type UserStatus = 'ACTIVE' | 'SUSPENDED';
+export type UserRole = 'OPERATOR' | 'SECURITY_OFFICER' | 'ADMIN' | 'REVIEWER' | 'VIEWER';
+export type UserStatus = 'ACTIVE' | 'SUSPENDED' | 'DISABLED';
 
 export interface UserRecord {
   id: string; // e.g. "USR-001"

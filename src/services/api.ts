@@ -1073,5 +1073,79 @@ export const api = {
     }
     return data;
   },
+
+  // ==========================================
+  // USER MANAGEMENT API METHODS (ADMIN ONLY)
+  // ==========================================
+
+  async getUsers(): Promise<SafeUser[]> {
+    const res = await fetch(`${BASE_URL}/auth/users`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+      credentials: 'include',
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ message: 'Failed to fetch users' }));
+      throw new Error(err.message || 'Failed to fetch users');
+    }
+    return res.json();
+  },
+
+  async createUser(payload: {
+    fullName: string;
+    email: string;
+    password?: string;
+    organization?: string;
+    role: UserRole;
+  }): Promise<{ success: boolean; user: SafeUser }> {
+    const res = await fetch(`${BASE_URL}/auth/users`, {
+      method: 'POST',
+      headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+      credentials: 'include',
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.message || 'Failed to create user.');
+    }
+    return data;
+  },
+
+  async updateUser(
+    id: string,
+    payload: {
+      fullName?: string;
+      email?: string;
+      password?: string;
+      organization?: string;
+      role?: UserRole;
+      status?: 'ACTIVE' | 'DISABLED';
+    }
+  ): Promise<{ success: boolean; user: SafeUser }> {
+    const res = await fetch(`${BASE_URL}/auth/users/${id}`, {
+      method: 'PUT',
+      headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+      credentials: 'include',
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.message || 'Failed to update user.');
+    }
+    return data;
+  },
+
+  async revokeUserSessions(id: string): Promise<{ success: boolean; message: string }> {
+    const res = await fetch(`${BASE_URL}/auth/users/${id}/revoke-sessions`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      credentials: 'include',
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.message || 'Failed to revoke user sessions.');
+    }
+    return data;
+  },
 };
 

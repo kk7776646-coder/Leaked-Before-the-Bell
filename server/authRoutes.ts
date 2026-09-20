@@ -72,6 +72,27 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
 }
 
 /**
+ * Guard middleware for endpoints requiring specific user roles
+ */
+export function requireRole(roles: UserRole[]) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: 'Authentication required. Please sign in to access this resource.',
+      });
+    }
+    if (!roles.includes(req.user.role)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Forbidden. You do not have the required permissions to perform this action.',
+      });
+    }
+    next();
+  };
+}
+
+/**
  * Helper to set standard HttpOnly session cookie
  */
 function setSessionCookie(res: Response, token: string, rememberMe = false) {
@@ -91,11 +112,12 @@ function setSessionCookie(res: Response, token: string, rememberMe = false) {
 
 /**
  * POST /api/auth/register
- * Real user account registration with validation and safe default OPERATOR role
+ * Real user account registration with validation and safe default OPERATOR role.
+ * Secured to require ADMIN authentication.
  */
-authRouter.post('/register', async (req: Request, res: Response) => {
+authRouter.post('/register', requireAuth, requireRole(['ADMIN']), async (req: Request, res: Response) => {
   try {
-    const { fullName, email, password, confirmPassword, organization } = req.body;
+    const { fullName, email, password, confirmPassword, organization, role } = req.body;
 
     if (!fullName || typeof fullName !== 'string' || !fullName.trim()) {
       return res.status(400).json({
@@ -138,13 +160,16 @@ authRouter.post('/register', async (req: Request, res: Response) => {
       });
     }
 
-    // Provision new user with safe default OPERATOR role
+    const validRoles = ['OPERATOR', 'SECURITY_OFFICER', 'ADMIN', 'REVIEWER', 'VIEWER'];
+    const assignedRole = role && validRoles.includes(role) ? role : 'OPERATOR';
+
+    // Provision new user
     const newUser: UserRecord = {
       id: `USR-${Date.now().toString(36).toUpperCase()}-${Math.floor(100 + Math.random() * 900)}`,
       email: normalizedEmail,
       fullName: fullName.trim(),
       passwordHash: hashPassword(password),
-      role: 'OPERATOR', // Safe default role
+      role: assignedRole,
       organization: organization ? organization.trim() : undefined,
       status: 'ACTIVE',
       createdAt: new Date().toISOString(),
@@ -153,29 +178,18 @@ authRouter.post('/register', async (req: Request, res: Response) => {
 
     db.createUser(newUser);
 
-    // Create session
-    const session = createSession(
-      newUser.id,
-      false,
-      req.headers['user-agent'],
-      req.ip || (req.headers['x-forwarded-for'] as string)
-    );
-
-    setSessionCookie(res, session.token, false);
-
     db.logAudit(
       'ACCOUNT_CREATED',
       'USER_ACCOUNT',
       newUser.id,
       'SUCCESS',
-      `User ${newUser.email} created an account with role ${newUser.role}.`
+      `User ${newUser.email} created by Admin ${req.user?.email || 'System'} with role ${newUser.role}.`
     );
 
     return res.status(201).json({
       success: true,
       message: 'Account created successfully.',
       user: toSafeUser(newUser),
-      token: session.token,
     });
   } catch (err: any) {
     console.error('Registration error:', err);
@@ -353,4 +367,301 @@ authRouter.post('/forgot-password', (req: Request, res: Response) => {
     success: true,
     message: 'If an account exists with this email address, password reset instructions have been dispatched.',
   });
+});
+
+// ==========================================
+// ADMIN USER MANAGEMENT ENDPOINTS
+// ==========================================
+
+/**
+ * GET /api/auth/users
+ * Retrieves all user records in the system (safely mapped)
+ */
+authRouter.get('/users', requireAuth, requireRole(['ADMIN']), (req: Request, res: Response) => {
+  try {
+    const users = db.getUsers().map(u => toSafeUser(u));
+    return res.json({
+      success: true,
+      users,
+    });
+  } catch (err: any) {
+    console.error('Error fetching users:', err);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve users list.',
+    });
+  }
+});
+
+/**
+ * POST /api/auth/users
+ * Explicit endpoint for Admin to provision a new user directly
+ */
+authRouter.post('/users', requireAuth, requireRole(['ADMIN']), async (req: Request, res: Response) => {
+  try {
+    const { fullName, email, password, role, organization } = req.body;
+
+    if (!fullName || !email || !password || !role) {
+      return res.status(400).json({
+        success: false,
+        message: 'Full name, email, password, and role are required.',
+      });
+    }
+
+    if (!validateEmail(email)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide a valid email address.',
+      });
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+    const existing = db.getUserByEmail(normalizedEmail);
+    if (existing) {
+      return res.status(409).json({
+        success: false,
+        message: 'A user with this email address already exists.',
+      });
+    }
+
+    const policyResult = validatePasswordPolicy(password);
+    if (!policyResult.valid) {
+      return res.status(400).json({
+        success: false,
+        message: policyResult.error || 'Password does not meet complexity requirements.',
+      });
+    }
+
+    const validRoles = ['OPERATOR', 'SECURITY_OFFICER', 'ADMIN', 'REVIEWER', 'VIEWER'];
+    if (!validRoles.includes(role)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid role specified. Must be one of: ${validRoles.join(', ')}`,
+      });
+    }
+
+    const newUser: UserRecord = {
+      id: `USR-${Date.now().toString(36).toUpperCase()}-${Math.floor(100 + Math.random() * 900)}`,
+      email: normalizedEmail,
+      fullName: fullName.trim(),
+      passwordHash: hashPassword(password),
+      role: role as any,
+      organization: organization ? organization.trim() : undefined,
+      status: 'ACTIVE',
+      createdAt: new Date().toISOString(),
+    };
+
+    db.createUser(newUser);
+
+    db.logAudit(
+      'USER_CREATED',
+      'USER_ACCOUNT',
+      newUser.id,
+      'SUCCESS',
+      `Admin ${req.user?.email} created user ${newUser.email} with role ${newUser.role}.`
+    );
+
+    return res.status(201).json({
+      success: true,
+      message: 'User created successfully.',
+      user: toSafeUser(newUser),
+    });
+  } catch (err: any) {
+    console.error('Error creating user:', err);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to create user.',
+    });
+  }
+});
+
+/**
+ * PUT /api/auth/users/:id
+ * Admin endpoint to update any user's profile, role, status, or set a new password
+ */
+authRouter.put('/users/:id', requireAuth, requireRole(['ADMIN']), async (req: Request, res: Response) => {
+  try {
+    const targetId = req.params.id;
+    const targetUser = db.getUserById(targetId);
+
+    if (!targetUser) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found.',
+      });
+    }
+
+    // Admins shouldn't be able to disable/suspend themselves to prevent lockout
+    if (targetId === req.user?.id && req.body.status && req.body.status !== 'ACTIVE') {
+      return res.status(400).json({
+        success: false,
+        message: 'Lockout prevention: You cannot disable or suspend your own admin account.',
+      });
+    }
+
+    const updates: Partial<UserRecord> = {};
+    const auditDetails: string[] = [];
+
+    // 1. Update general info
+    if (req.body.fullName !== undefined) {
+      updates.fullName = req.body.fullName.trim();
+    }
+    if (req.body.organization !== undefined) {
+      updates.organization = req.body.organization.trim() || undefined;
+    }
+
+    // 2. Update email (with duplicate checks)
+    if (req.body.email !== undefined && req.body.email.trim().toLowerCase() !== targetUser.email.toLowerCase()) {
+      const newEmail = req.body.email.trim().toLowerCase();
+      if (!validateEmail(newEmail)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Please provide a valid email address.',
+        });
+      }
+      const existing = db.getUserByEmail(newEmail);
+      if (existing) {
+        return res.status(409).json({
+          success: false,
+          message: 'An account with this email address already exists.',
+        });
+      }
+      updates.email = newEmail;
+      auditDetails.push(`email changed from ${targetUser.email} to ${newEmail}`);
+    }
+
+    // 3. Update role
+    if (req.body.role !== undefined && req.body.role !== targetUser.role) {
+      const validRoles = ['OPERATOR', 'SECURITY_OFFICER', 'ADMIN', 'REVIEWER', 'VIEWER'];
+      if (!validRoles.includes(req.body.role)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid role specified.',
+        });
+      }
+      updates.role = req.body.role;
+      auditDetails.push(`role changed from ${targetUser.role} to ${req.body.role}`);
+
+      db.logAudit(
+        'ROLE_CHANGED',
+        'USER_ACCOUNT',
+        targetId,
+        'SUCCESS',
+        `Admin ${req.user?.email} changed role of ${targetUser.email} from ${targetUser.role} to ${req.body.role}.`
+      );
+    }
+
+    // 4. Update status (with session revocation on disabling/suspending)
+    let shouldRevokeSessions = false;
+    if (req.body.status !== undefined && req.body.status !== targetUser.status) {
+      const validStatuses = ['ACTIVE', 'SUSPENDED', 'DISABLED'];
+      if (!validStatuses.includes(req.body.status)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid status specified.',
+        });
+      }
+      updates.status = req.body.status;
+      auditDetails.push(`status changed from ${targetUser.status} to ${req.body.status}`);
+
+      if (req.body.status !== 'ACTIVE') {
+        shouldRevokeSessions = true;
+      }
+
+      db.logAudit(
+        req.body.status === 'ACTIVE' ? 'USER_ENABLED' : 'USER_DISABLED',
+        'USER_ACCOUNT',
+        targetId,
+        'SUCCESS',
+        `Admin ${req.user?.email} updated status of ${targetUser.email} to ${req.body.status}.`
+      );
+    }
+
+    // 5. Reset/Set password
+    if (req.body.password !== undefined && req.body.password.trim().length > 0) {
+      const policyResult = validatePasswordPolicy(req.body.password);
+      if (!policyResult.valid) {
+        return res.status(400).json({
+          success: false,
+          message: policyResult.error || 'Password does not meet complexity requirements.',
+        });
+      }
+      updates.passwordHash = hashPassword(req.body.password);
+      auditDetails.push('password reset');
+      shouldRevokeSessions = true; // Force re-login on password change
+
+      db.logAudit(
+        'PASSWORD_RESET',
+        'USER_ACCOUNT',
+        targetId,
+        'SUCCESS',
+        `Admin ${req.user?.email} reset password for ${targetUser.email}.`
+      );
+    }
+
+    const updatedUser = db.updateUser(targetId, updates);
+
+    if (shouldRevokeSessions) {
+      db.deleteUserSessions(targetId);
+      db.logAudit(
+        'SESSION_REVOCATION',
+        'USER_SESSION',
+        targetId,
+        'SUCCESS',
+        `Revoked all active sessions for ${targetUser.email} (triggered by account disable/password reset).`
+      );
+    }
+
+    return res.json({
+      success: true,
+      message: 'User updated successfully.',
+      user: updatedUser ? toSafeUser(updatedUser) : null,
+      sessionsRevoked: shouldRevokeSessions,
+    });
+  } catch (err: any) {
+    console.error('Error updating user:', err);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to update user details.',
+    });
+  }
+});
+
+/**
+ * POST /api/auth/users/:id/revoke-sessions
+ * Explicitly revoke all active sessions for a user
+ */
+authRouter.post('/users/:id/revoke-sessions', requireAuth, requireRole(['ADMIN']), (req: Request, res: Response) => {
+  try {
+    const targetId = req.params.id;
+    const targetUser = db.getUserById(targetId);
+
+    if (!targetUser) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found.',
+      });
+    }
+
+    db.deleteUserSessions(targetId);
+
+    db.logAudit(
+      'SESSION_REVOCATION',
+      'USER_SESSION',
+      targetId,
+      'SUCCESS',
+      `Admin ${req.user?.email} explicitly revoked all active sessions for ${targetUser.email}.`
+    );
+
+    return res.json({
+      success: true,
+      message: `Successfully revoked all active sessions for ${targetUser.fullName}.`,
+    });
+  } catch (err: any) {
+    console.error('Error revoking sessions:', err);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to revoke user sessions.',
+    });
+  }
 });

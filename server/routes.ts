@@ -41,6 +41,7 @@ import { runAllUploadTests } from './uploadTestSuite';
 import { AiAssistantRegistry } from './aiAssistantRegistry';
 import { AiAssistantService } from './aiAssistantService';
 import { runAllAiAssistantTests } from './aiAssistantTestSuite';
+import { runAllAuthTests } from './authTestSuite';
 import {
   CandidateRecord,
   HistoricalPaperRecord,
@@ -50,8 +51,12 @@ import {
   UploadResponseItem,
   BatchUploadResponse,
 } from './types';
+import { requireAuth, requireRole } from './authRoutes';
 
 export const apiRouter = express.Router();
+
+// Enforce authentication on all routes under /api
+apiRouter.use(requireAuth);
 
 // Multer storage configs
 const uploadCandidates = multer({
@@ -1119,10 +1124,10 @@ const handleDeleteAllHistorical = (req: Request, res: Response): void => {
     res.status(500).json({ error: err.message || 'Failed to delete all historical papers.' });
   }
 };
-apiRouter.delete('/historical/all', handleDeleteAllHistorical);
-apiRouter.delete('/historical', handleDeleteAllHistorical);
-apiRouter.delete('/historical-papers/all', handleDeleteAllHistorical);
-apiRouter.delete('/historical-papers', handleDeleteAllHistorical);
+apiRouter.delete('/historical/all', requireRole(['ADMIN']), handleDeleteAllHistorical);
+apiRouter.delete('/historical', requireRole(['ADMIN']), handleDeleteAllHistorical);
+apiRouter.delete('/historical-papers/all', requireRole(['ADMIN']), handleDeleteAllHistorical);
+apiRouter.delete('/historical-papers', requireRole(['ADMIN']), handleDeleteAllHistorical);
 
 // Generate Physical Trial Examination Paper
 const handleGenerateTrialPaper = async (req: Request, res: Response): Promise<void> => {
@@ -1594,8 +1599,8 @@ const handleDeleteAllRealPapers = (req: Request, res: Response): void => {
     res.status(500).json({ error: err.message || 'Failed to delete all verified baseline papers.' });
   }
 };
-apiRouter.delete('/real-papers/all', handleDeleteAllRealPapers);
-apiRouter.delete('/real-papers', handleDeleteAllRealPapers);
+apiRouter.delete('/real-papers/all', requireRole(['ADMIN']), handleDeleteAllRealPapers);
+apiRouter.delete('/real-papers', requireRole(['ADMIN']), handleDeleteAllRealPapers);
 
 // Retrieve Real Paper Document Binary Stream
 const handleGetRealPaperDocument = async (req: Request, res: Response): Promise<void> => {
@@ -1792,7 +1797,7 @@ apiRouter.get('/settings', (req: Request, res: Response) => {
   res.json(db.getSettings());
 });
 
-apiRouter.put('/settings', (req: Request, res: Response) => {
+apiRouter.put('/settings', requireRole(['ADMIN']), (req: Request, res: Response) => {
   const updated = db.updateSettings(req.body);
   res.json(updated);
 });
@@ -1801,7 +1806,7 @@ apiRouter.put('/settings', (req: Request, res: Response) => {
 // 10. AUDIT LOGS API
 // ==========================================
 
-apiRouter.get('/audit-logs', (req: Request, res: Response) => {
+apiRouter.get('/audit-logs', requireRole(['ADMIN', 'SECURITY_OFFICER']), (req: Request, res: Response) => {
   res.json(db.getAuditLogs());
 });
 
@@ -1832,7 +1837,7 @@ apiRouter.get('/ai-assistant/providers', (req: Request, res: Response) => {
 });
 
 // Save or update assistant provider configuration
-apiRouter.post('/ai-assistant/providers', (req: Request, res: Response) => {
+apiRouter.post('/ai-assistant/providers', requireRole(['ADMIN']), (req: Request, res: Response) => {
   try {
     const {
       id,
@@ -1874,7 +1879,7 @@ apiRouter.post('/ai-assistant/providers', (req: Request, res: Response) => {
 });
 
 // Set provider as default
-apiRouter.post('/ai-assistant/providers/:id/default', (req: Request, res: Response) => {
+apiRouter.post('/ai-assistant/providers/:id/default', requireRole(['ADMIN']), (req: Request, res: Response) => {
   const success = db.setDefaultAiProvider(req.params.id);
   if (!success) {
     res.status(404).json({ error: 'Provider configuration not found.' });
@@ -1884,7 +1889,7 @@ apiRouter.post('/ai-assistant/providers/:id/default', (req: Request, res: Respon
 });
 
 // Toggle provider enabled/disabled
-apiRouter.post('/ai-assistant/providers/:id/toggle', (req: Request, res: Response) => {
+apiRouter.post('/ai-assistant/providers/:id/toggle', requireRole(['ADMIN']), (req: Request, res: Response) => {
   const { enabled } = req.body;
   const updated = db.toggleAiProvider(req.params.id, !!enabled);
   if (!updated) {
@@ -1895,7 +1900,7 @@ apiRouter.post('/ai-assistant/providers/:id/toggle', (req: Request, res: Respons
 });
 
 // Delete provider
-apiRouter.delete('/ai-assistant/providers/:id', (req: Request, res: Response) => {
+apiRouter.delete('/ai-assistant/providers/:id', requireRole(['ADMIN']), (req: Request, res: Response) => {
   const success = db.deleteAiProvider(req.params.id);
   if (!success) {
     res.status(404).json({ error: 'Provider configuration not found.' });
@@ -1905,7 +1910,7 @@ apiRouter.delete('/ai-assistant/providers/:id', (req: Request, res: Response) =>
 });
 
 // Real connection test against provider endpoint
-apiRouter.post('/ai-assistant/test-connection', async (req: Request, res: Response) => {
+apiRouter.post('/ai-assistant/test-connection', requireRole(['ADMIN']), async (req: Request, res: Response) => {
   try {
     const { providerId, modelId, baseUrl, apiKey, useCustomBaseUrl, savedProviderId } = req.body;
 
@@ -1942,7 +1947,7 @@ apiRouter.post('/ai-assistant/test-connection', async (req: Request, res: Respon
 });
 
 // Discover models from provider API
-apiRouter.post('/ai-assistant/discover-models', async (req: Request, res: Response) => {
+apiRouter.post('/ai-assistant/discover-models', requireRole(['ADMIN']), async (req: Request, res: Response) => {
   try {
     const { providerId, baseUrl, apiKey, useCustomBaseUrl, savedProviderId } = req.body;
 
@@ -2001,6 +2006,16 @@ apiRouter.get('/ai-assistant/test-suite', async (req: Request, res: Response) =>
     res.json(report);
   } catch (err: any) {
     res.status(500).json({ error: err.message || 'Failed to execute AI assistant test suite.' });
+  }
+});
+
+// Automated test suite for Authentication and Authorization
+apiRouter.get('/auth/test-suite', requireRole(['ADMIN']), async (req: Request, res: Response) => {
+  try {
+    const report = await runAllAuthTests();
+    res.json(report);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Failed to execute auth test suite.' });
   }
 });
 

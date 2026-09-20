@@ -266,48 +266,10 @@ export const LoginPage: React.FC = () => {
               </button>
             </form>
 
-            {/* Quick Demo Access Bar */}
-            <div className="mt-6 pt-5 border-t border-[#E1E6EF] dark:border-[#0B2455]/80 space-y-2.5">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-[#64748B] dark:text-[#94A0B5] uppercase tracking-wider">
-                  Test Credentials
-                </span>
-                <span className="text-[10px] text-[#8190AD] font-mono">Default Accounts</span>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => handleFillDemo('officer')}
-                  className="p-2 text-left rounded-lg bg-[#F5F8FF] dark:bg-[#020617]/70 border border-[#B7C2D9]/60 dark:border-[#0B2455] hover:border-[#0B5CFF] transition-all cursor-pointer text-xs"
-                >
-                  <p className="font-semibold text-[#0B5CFF] text-[11px]">Security Officer</p>
-                  <p className="text-[10px] text-[#64748B] dark:text-[#8190AD] truncate">
-                    security.officer@leaklens.local
-                  </p>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleFillDemo('admin')}
-                  className="p-2 text-left rounded-lg bg-[#F5F8FF] dark:bg-[#020617]/70 border border-[#B7C2D9]/60 dark:border-[#0B2455] hover:border-[#0B5CFF] transition-all cursor-pointer text-xs"
-                >
-                  <p className="font-semibold text-[#0B5CFF] text-[11px]">Administrator</p>
-                  <p className="text-[10px] text-[#64748B] dark:text-[#8190AD] truncate">
-                    admin@leaklens.local
-                  </p>
-                </button>
-              </div>
-            </div>
-
-            {/* Link to Register */}
-            <div className="mt-5 text-center">
-              <p className="text-xs text-[#64748B] dark:text-[#94A0B5]">
-                Need a new examination operator account?{' '}
-                <Link
-                  to="/create-account"
-                  className="font-bold text-[#0B5CFF] hover:text-[#2563EB] hover:underline"
-                >
-                  Create Account
-                </Link>
+            {/* Authorization Notice */}
+            <div className="mt-5 p-3 rounded-xl bg-amber-50/50 dark:bg-amber-950/20 border border-amber-200/50 dark:border-amber-900/30 text-center text-amber-800 dark:text-amber-400">
+              <p className="text-[11px] font-medium leading-normal">
+                Access is restricted to authorized users. Registration is closed to the public. Please contact your systems administrator for credentials.
               </p>
             </div>
           </div>

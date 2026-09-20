@@ -18,24 +18,38 @@ import {
   Sliders,
   Sparkles,
   FlaskConical,
+  Users,
 } from 'lucide-react';
 import { useTheme, ThemeMode } from '../hooks/useTheme';
+import { useAuth } from '../context/AuthContext';
 import { AiAssistantSettingsSection } from '../components/settings/AiAssistantSettingsSection';
 import { TestDataSettingsSection } from '../components/settings/TestDataSettingsSection';
+import { UserManagementSection } from '../components/settings/UserManagementSection';
 
-type SettingsTab = 'test-data' | 'ai-assistant' | 'appearance' | 'examination' | 'notifications';
+type SettingsTab = 'test-data' | 'ai-assistant' | 'appearance' | 'examination' | 'notifications' | 'user-management';
 
 export const SettingsPage: React.FC = () => {
   const { theme, setTheme, resolvedTheme } = useTheme();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'ADMIN';
+
   const [searchParams, setSearchParams] = useSearchParams();
   const tabParam = searchParams.get('tab') as SettingsTab | null;
   const [activeTab, setActiveTab] = useState<SettingsTab>(tabParam || 'test-data');
 
   useEffect(() => {
-    if (tabParam && (tabParam === 'test-data' || tabParam === 'ai-assistant' || tabParam === 'appearance' || tabParam === 'examination' || tabParam === 'notifications')) {
+    if (
+      tabParam &&
+      (tabParam === 'test-data' ||
+        tabParam === 'ai-assistant' ||
+        tabParam === 'appearance' ||
+        tabParam === 'examination' ||
+        tabParam === 'notifications' ||
+        (tabParam === 'user-management' && isAdmin))
+    ) {
       setActiveTab(tabParam);
     }
-  }, [tabParam]);
+  }, [tabParam, isAdmin]);
 
   const handleTabChange = (tab: SettingsTab) => {
     setActiveTab(tab);
@@ -145,6 +159,20 @@ export const SettingsPage: React.FC = () => {
           <Bell className="w-3.5 h-3.5" />
           <span>Notifications & Alerts</span>
         </button>
+        {isAdmin && (
+          <button
+            type="button"
+            onClick={() => handleTabChange('user-management')}
+            className={`px-4 py-2.5 text-xs font-semibold rounded-t-lg transition-all border-b-2 flex items-center gap-2 cursor-pointer shrink-0 ${
+              activeTab === 'user-management'
+                ? 'border-blue-600 text-blue-600 dark:text-blue-400 bg-blue-50/40 dark:bg-blue-950/20'
+                : 'border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:border-slate-300'
+            }`}
+          >
+            <Users className="w-3.5 h-3.5" />
+            <span>User Management</span>
+          </button>
+        )}
       </div>
 
       <div className="space-y-6 max-w-4xl">
@@ -261,6 +289,11 @@ export const SettingsPage: React.FC = () => {
               </div>
             </div>
           </Card>
+        )}
+
+        {/* TAB 5: User Management (Admin Only) */}
+        {activeTab === 'user-management' && isAdmin && (
+          <UserManagementSection />
         )}
       </div>
     </ResponsiveContainer>
