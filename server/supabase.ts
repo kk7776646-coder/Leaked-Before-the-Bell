@@ -4,14 +4,20 @@ const SUPABASE_URL = (
   process.env.SUPABASE_URL || 'https://wnemytwacfsekuwfqadr.supabase.co'
 ).trim();
 
-// A real Supabase service role key is a JWT (Compact JWS) with 3 base64url segments separated by dots.
-// Any non-JWT key (like placeholder 'sb_secret_...') will cause Supabase to return 'Invalid Compact JWS'.
+// A valid Supabase service role key is either a legacy JWT (Compact JWS) with 3 segments separated by dots,
+// or a newer server-side secret API key starting with 'sb_secret_'.
 const RAW_SERVICE_ROLE_KEY = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
 
 export function isValidCompactJws(token?: string): boolean {
   if (!token || typeof token !== 'string') return false;
   const trimmed = token.trim();
-  if (trimmed.startsWith('sb_secret_')) return false;
+  
+  // Support newer server-side secret API keys starting with 'sb_secret_'
+  if (trimmed.startsWith('sb_secret_')) {
+    return trimmed.length > 'sb_secret_'.length;
+  }
+  
+  // Support legacy JWT / Compact JWS format
   const parts = trimmed.split('.');
   return parts.length === 3 && parts.every((p) => p.length > 0);
 }
@@ -30,7 +36,7 @@ export function getSupabaseClient(): SupabaseClient | null {
   if (!isSupabaseConfigured()) {
     if (!loggedConfigStatus) {
       console.log(
-        '[Supabase] Cloud storage sync inactive (valid SUPABASE_SERVICE_ROLE_KEY JWT not set in environment; operating in resilient local storage mode).'
+        '[Supabase] Cloud storage sync inactive (valid SUPABASE_SERVICE_ROLE_KEY not set in environment; operating in resilient local storage mode).'
       );
       loggedConfigStatus = true;
     }
